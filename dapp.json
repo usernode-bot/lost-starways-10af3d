@@ -1,0 +1,8 @@
+{
+  "description": "Old skool adventure game",
+  "secrets": [],
+  "governance": {
+    "approvers": "invited",
+    "approvals": "default"
+  }
+}
