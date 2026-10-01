@@ -1,27 +1,24 @@
 # Lost Starways
 
-> **Starter template** — this repo was scaffolded by Homeroom Social
-> Vibecoding. Everything in it is placeholder example code until the
-> app's first real feature is built.
+An old-school Commodore 64-style text adventure. Seven strange worlds, a
+ship in pieces, and a parser that takes two-word commands — all in one
+self-contained HTML file with the look and sound of a 1982 home computer:
+a palette-true pixel renderer for the location pictures and WebAudio
+"SID-ish" beeps. No sound files, no external assets, no server-side state.
 
-The scaffold is a small working demo that proves the plumbing works:
+## How it works
 
-- **Sign-in** — the server verifies the platform-issued user token
-  (an RS256 JWT) on every request, so the app already knows who is
-  using it. No accounts to build.
-- **Database** — the app has its own private Postgres database; the
-  demo stores button presses in a `presses` table.
-- **Live API** — two example routes (`/api/press`,
-  `/api/leaderboard`) read and write through a real Express server.
-- **Styling** — Tailwind CSS, precompiled by `npm run build` during
-  image creation with either Kubernetes/Paketo or standalone Docker.
+- **Single file.** The whole game (CSS, JavaScript, embedded fonts and the
+  map data) lives in `public/index.html`. `server.js` only serves it and
+  verifies the platform-issued user token.
+- **Saves in your browser.** Progress is kept in localStorage, wrapped in
+  try/catch so the game still runs where storage is blocked. You can also
+  copy a save code between devices (type `LOAD` followed by the code).
+- **Community lands.** Type `MODS` in the game to paste a map pack (JSON)
+  and add your own land to the Starways. Packs are data only — they can't
+  run code — and are validated before install.
 
-## Replacing the template
+## Quick start
 
-Open the app on Homeroom, tap the Homeroom icon in the header, choose
-**Start a new change**, and describe the app you want in plain English.
-The template will be replaced with your real app. You can also run
-Claude Code against this repo directly; start with `CLAUDE.md`, which
-carries the app-specific notes and points at the platform rules.
-
-Once the real app exists, rewrite this README to describe it.
+- Press RETURN at the title screen to start, `HELP` lists the verbs,
+  `TAB` or `I` shows your inventory.
