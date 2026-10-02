@@ -1,0 +1,18 @@
+[
+  {
+    "id": "lost-starways",
+    "title": "Lost Starways",
+    "tagline": "A text adventure across seven strange worlds.",
+    "status": "live",
+    "path": "/play",
+    "maxScore": 5000
+  },
+  {
+    "id": "escape-from-dracula",
+    "title": "Escape from Dracula",
+    "tagline": "Flee the count's castle before dawn. Coming soon to the Starways.",
+    "status": "soon",
+    "path": null,
+    "maxScore": 5000
+  }
+]

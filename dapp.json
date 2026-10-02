@@ -3,21 +3,34 @@
   "secrets": [],
   "tests": [
     {
+      "id": "hub.hub-renders",
+      "name": "Hub shows game cards and leaderboard",
+      "path": "/",
+      "expectSelector": "#cards .game-card",
+      "expectText": "TOP SCOUTS",
+      "visual": true,
+      "impact": [
+        "public/**",
+        "server.js"
+      ]
+    },
+    {
       "id": "game.title-screen",
       "name": "Lost Starways game screen loads",
-      "path": "/",
+      "path": "/play",
       "expectSelector": "#screen",
       "expectText": "STARWAYS 64",
       "visual": true,
       "impact": [
         "public/index.html",
+        "public/fonts.css",
         "server.js"
       ]
     },
     {
       "id": "game.input-under-picture",
       "name": "Command input sits under the picture",
-      "path": "/",
+      "path": "/play",
       "expectSelector": "#pic + #cmdline"
     }
   ],

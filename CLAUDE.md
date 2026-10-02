@@ -58,43 +58,39 @@ this check for you and tells you when you are behind. It is silent offline, so
 its silence is not proof the checkout is current. Inside Homeroom's dev-chat
 the platform fixes the base commit, and none of this applies.
 
-## Starter template
+## App structure
 
-The screen this app currently ships — the hero, the "What's already
-working" card, and the Press! example (the demo markup in
-`public/index.html`, the `/api/press` and `/api/leaderboard` routes, and
-the `presses` table bootstrap in `server.js`) — is placeholder content
-from the Homeroom starter template, not product intent.
+The starter template (the Press! demo, `/api/press`, the `presses` table)
+was removed when the real app was built; nothing from it remains. What the
+app ships now:
 
-When the user asks for their first real feature, REPLACE the template
-screen rather than building alongside it:
-
-- remove the `usernode-starter-notice@1` block in `public/index.html`
-  (both sentinel comments and everything between them),
-- remove or repurpose the "Try the example" card, its demo endpoints and
-  the `presses` table as appropriate,
-- rewrite `README.md` to describe the actual app.
-
-Keep the `usernode-dev-console@1` forwarder `<script>` when rewriting the
-HTML — that block is platform infrastructure, not template content.
-
-If a rule below this line conflicts with the hosted conventions, the
-hosted conventions win. This file is **app-specific** — write down
-things about *this* app that belong in the repo: product intent,
-data-model quirks, style preferences, opt-in policies (e.g. which
-tables you've marked private), etc.
-
----
+- `/` is the **hub** (`public/hub.html`): game cards rendered from
+  `public/games.json` plus the TOP SCOUTS leaderboard. `server.js` serves it
+  with an explicit `app.get('/')` registered before `express.static`
+  (static's default directory index would otherwise answer `/` with the game).
+- `/play` is the **game** (`public/index.html`, plus `public/fonts.css` with
+  the two embedded pixel fonts both pages share).
+- `public/games.json` is the games registry and the single source for both
+  the hub cards and which game ids `POST /api/scores` accepts.
 
 ## About Lost Starways
 
-Old skool adventure game
-
-_(add a sentence or two more of product context here so Claude Code has a
-shared understanding of what this app is for)_
+An old-school C64-style game collection. Today it is one text adventure
+(Lost Starways: seven strange worlds, 21 ship parts, two-word parser
+commands); the hub makes it a collection so more games can land without a
+redesign — "Escape from Dracula" is the first placeholder card.
 
 ## App-specific conventions
 
-_(optional — e.g. "all currency values stored as integer cents, not
-floats"; "the `posts` table is append-only"; "avoid adding new
-dependencies"; etc.)_
+- The C64 look is the product: hub and game share the same palette, pixel
+  fonts and bordered-box styling. Don't introduce new UI kits or Tailwind
+  for these pages.
+- Scores are server-side and shared: `game_scores` (public table) keyed by
+  `user_id` + `game_id`, one row per player per game holding their BEST
+  COMPLETED score (`GREATEST` upsert — a higher rerun replaces it, a lower
+  one doesn't). Only a completed run (the game's `state.ended`) posts a
+  score; identity is `req.user` only, never a client-supplied name.
+- Score sanity is the registry's `maxScore` per game; anything over is
+  rejected, not clamped.
+- `usernode-demo` seed data in staging belongs to fake scouts
+  (`staging-demo-scout*`), never to the visitor.

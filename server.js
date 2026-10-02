@@ -1,6 +1,8 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -21,7 +23,12 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // Paths that stay open without authentication. Add a path here (and add it
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
-const PUBLIC_API_PATHS = new Set(['/health']);
+// /api/leaderboard GET is public on purpose: the scoreboard is community
+// data (display names and best scores, what the hub shows any player) and
+// the hub itself is served to unauthenticated GETs, so an anonymous visit
+// sees the board rather than a console 401. Posting a score still requires
+// a platform identity — only this exact GET path is exempt.
+const PUBLIC_API_PATHS = new Set(['/health', '/api/leaderboard']);
 
 // Every container is stopped and replaced on each deploy, and the runtime
 // sends SIGTERM with a bounded grace period. This flag flips /health to 503
@@ -29,6 +36,61 @@ const PUBLIC_API_PATHS = new Set(['/health']);
 // makes the shutdown handler idempotent (a repeat signal is a no-op).
 const DRAIN_MS = 3000;
 let shuttingDown = false;
+
+// Data and irreversible outbound side effects are gated on the environment,
+// never a feature or code path.
+const IS_STAGING = process.env.USERNODE_ENV === 'staging';
+
+// The games registry (public/games.json) is the single source for the hub's
+// cards and for which game ids the score API accepts. It carries no secrets,
+// so it lives in public/ and is also served as a static file.
+const GAMES = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'public', 'games.json'), 'utf8')
+);
+const LIVE_GAMES = GAMES.filter((g) => g.status === 'live');
+const LIVE_GAME_IDS = LIVE_GAMES.map((g) => g.id);
+
+// Scores persist in Postgres so every player sees the same leaderboard.
+// Absent locally (plain `node server.js` without DATABASE_URL) the app still
+// serves the game; only the score API degrades.
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  : null;
+
+async function migrate() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS game_scores (
+    user_id    TEXT        NOT NULL,
+    game_id    TEXT        NOT NULL,
+    username   TEXT        NOT NULL,
+    best_score INTEGER     NOT NULL DEFAULT 0,
+    plays      INTEGER     NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, game_id)
+  )`);
+
+  // Staging starts from a copy of production, so tables this change creates
+  // are EMPTY there and the leaderboard would render blank. Seed a handful of
+  // obviously fake rows (never the visitor's identity, never real users) so
+  // the staging preview and the proposal checks have something to show.
+  if (IS_STAGING) {
+    const demo = [
+      ['staging-demo-scout1', 'Staging demo scout 1', 620],
+      ['staging-demo-scout2', 'Staging demo scout 2', 480],
+      ['staging-demo-scout3', 'Staging demo scout 3', 455],
+      ['staging-demo-scout4', 'Staging demo scout 4', 310],
+      ['staging-demo-scout5', 'Staging demo scout 5', 215],
+      ['staging-demo-scout6', 'Staging demo scout 6', 90],
+    ];
+    for (const [id, name, score] of demo) {
+      await pool.query(
+        `INSERT INTO game_scores (user_id, game_id, username, best_score)
+         VALUES ($1, 'lost-starways', $2, $3)
+         ON CONFLICT (user_id, game_id) DO NOTHING`,
+        [id, name, score]
+      );
+    }
+  }
+}
 
 app.use(express.json());
 
@@ -116,9 +178,125 @@ app.get('/health', (_req, res) => {
 // catch-all and surface a 401 in the console on every fresh load.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
-// Lost Starways is a fully self-contained single-file game: the state lives
-// in the player's browser (localStorage) and there is no server-side API,
-// so the only thing this process does is serve the static shell below.
+// The hub is the landing page; the game moved to /play. Both are registered
+// BEFORE express.static because static would otherwise answer / with
+// public/index.html (its default directory index) and the hub would never
+// show. Like static files, these pages are served to unauthenticated GETs:
+// the hub degrades to an empty leaderboard (its API call 401s), and the
+// game keeps all state in the browser.
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'hub.html')));
+app.get('/play', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// Shared leaderboard. Identity is req.user only (platform JWT); the client
+// never sends a name. Scores are the product here, so this table is public.
+app.get('/api/leaderboard', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'No database' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT user_id, username,
+              jsonb_object_agg(game_id, best_score) AS scores,
+              SUM(best_score)::int AS total,
+              MAX(best_score)::int AS best_single
+       FROM game_scores
+       WHERE game_id = ANY($1)
+       GROUP BY user_id, username
+       ORDER BY total DESC, best_single DESC, username ASC
+       LIMIT 10`,
+      [LIVE_GAME_IDS]
+    );
+    let you = null;
+    if (req.user) {
+      const mine = await pool.query(
+        `SELECT user_id, username,
+                jsonb_object_agg(game_id, best_score) AS scores,
+                SUM(best_score)::int AS total
+         FROM game_scores
+         WHERE game_id = ANY($1) AND user_id = $2
+         GROUP BY user_id, username`,
+        [LIVE_GAME_IDS, req.user.id]
+      );
+      if (mine.rows.length) {
+        const rank = await pool.query(
+          `SELECT COUNT(*)::int AS ahead FROM (
+             SELECT user_id FROM game_scores
+             WHERE game_id = ANY($1)
+             GROUP BY user_id
+             HAVING SUM(best_score) > $2
+           ) t`,
+          [LIVE_GAME_IDS, mine.rows[0].total]
+        );
+        const top = new Set(rows.map((r) => r.user_id));
+        if (!top.has(req.user.id)) {
+          you = {
+            username: mine.rows[0].username,
+            scores: mine.rows[0].scores,
+            total: mine.rows[0].total,
+            rank: rank.rows[0].ahead + 1,
+          };
+        }
+      }
+    }
+    res.json({
+      viewer: req.user ? { username: req.user.username } : null,
+      games: LIVE_GAMES.map((g) => ({ id: g.id, title: g.title })),
+      rows: rows.map((r) => ({ username: r.username, scores: r.scores, total: r.total })),
+      you,
+    });
+  } catch (err) {
+    console.warn('leaderboard query failed: ' + err.message);
+    res.status(500).json({ error: 'Leaderboard unavailable' });
+  }
+});
+
+// A completed run posts its session score. GREATEST keeps the best completed
+// score per game: a higher rerun replaces it, a lower one changes nothing.
+app.post('/api/scores', async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'No database' });
+  const game = LIVE_GAMES.find((g) => g.id === (req.body && req.body.game));
+  const score = req.body && req.body.score;
+  if (!game) return res.status(400).json({ error: 'Unknown game' });
+  if (!Number.isInteger(score) || score < 0 || score > game.maxScore) {
+    return res.status(400).json({ error: 'Score out of range' });
+  }
+  try {
+    const up = await pool.query(
+      `INSERT INTO game_scores (user_id, game_id, username, best_score, plays)
+       VALUES ($1, $2, $3, $4, 1)
+       ON CONFLICT (user_id, game_id) DO UPDATE
+         SET best_score = GREATEST(game_scores.best_score, EXCLUDED.best_score),
+             username = EXCLUDED.username,
+             plays = game_scores.plays + 1,
+             updated_at = now()
+       RETURNING user_id, game_id, username, best_score, plays`,
+      [req.user.id, game.id, req.user.username, score]
+    );
+    const total = await pool.query(
+      `SELECT COALESCE(SUM(best_score), 0)::int AS total
+       FROM game_scores WHERE user_id = $1 AND game_id = ANY($2)`,
+      [req.user.id, LIVE_GAME_IDS]
+    );
+    const rank = await pool.query(
+      `SELECT COUNT(*)::int AS ahead FROM (
+         SELECT user_id FROM game_scores
+         WHERE game_id = ANY($1)
+         GROUP BY user_id
+         HAVING SUM(best_score) > $2
+       ) t`,
+      [LIVE_GAME_IDS, total.rows[0].total]
+    );
+    res.json({
+      game: up.rows[0].game_id,
+      username: up.rows[0].username,
+      best_score: up.rows[0].best_score,
+      plays: up.rows[0].plays,
+      total: total.rows[0].total,
+      rank: rank.rows[0].ahead + 1,
+    });
+  } catch (err) {
+    console.warn('score submit failed: ' + err.message);
+    res.status(500).json({ error: 'Score not saved' });
+  }
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -169,12 +347,27 @@ async function shutdown(signal) {
   server.closeIdleConnections?.();
   const t = setTimeout(() => server.closeAllConnections?.(), DRAIN_MS);
   t.unref?.();
+  if (pool) { try { await pool.end(); } catch {} }
   process.exit(0);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-const server = app.listen(port, () => console.log(`Listening on :${port}`));
-// Let Envoy retire idle upstream connections at 60s, with a 15s margin.
-server.keepAliveTimeout = 75_000;
+let server;
+
+// Apply the schema (and staging seed) before accepting traffic, so a staging
+// preview never serves an un-migrated database. A database that cannot be
+// reached must not stop the game from serving; the score API reports 503.
+(async () => {
+  if (pool) {
+    try {
+      await migrate();
+    } catch (err) {
+      console.warn('migration failed, score API disabled: ' + err.message);
+    }
+  }
+  server = app.listen(port, () => console.log(`Listening on :${port}`));
+  // Let Envoy retire idle upstream connections at 60s, with a 15s margin.
+  server.keepAliveTimeout = 75_000;
+})();

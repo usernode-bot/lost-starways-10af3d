@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Lost Starways</title>
+  <meta name="description" content="An old-school C64-style game collection with a shared top-scouts leaderboard.">
+  <link rel="stylesheet" href="fonts.css">
+  <style>
+/* LOST STARWAYS HUB - same C64 look as the game */
+:root {
+  --border: #6c5eb5;   /* light blue */
+  --bg: #352879;       /* blue */
+  --fg: #6c5eb5;       /* light blue */
+  --white: #ffffff;
+  --yellow: #b8c76f;
+  --cyan: #70a4b2;
+  --green: #9ad284;
+  --red: #68372b;
+  --grey: #959595;
+  --key: #433900;
+  /* softer, easier-on-the-eye versions (follow each land's colours) */
+  --text: color-mix(in srgb, var(--fg) 30%, #f1eee4);
+  --soft-yellow: color-mix(in srgb, var(--yellow) 55%, #f1eee4);
+  --soft-cyan: color-mix(in srgb, var(--cyan) 55%, #f1eee4);
+  --soft-green: color-mix(in srgb, var(--green) 60%, #f1eee4);
+  --soft-grey: color-mix(in srgb, var(--fg) 35%, #b9b6b0);
+  --bar: color-mix(in srgb, var(--fg) 55%, var(--bg));
+  --pixel: "Press Start 2P", "Courier New", monospace;
+  --read: "VT323", "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  padding: 16px;
+  background: color-mix(in srgb, var(--border) 70%, #0d0b1e);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--read);
+  color: var(--text);
+}
+#screen {
+  position: relative;
+  width: min(100%, 760px);
+  min-height: min(100%, 920px);
+  background: var(--bg);
+  padding: 14px;
+  font-size: clamp(18px, 2.5vw, 23px);
+  line-height: 1.3;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 8px 40px rgba(0,0,0,.35);
+}
+#screen.crt::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.07) 0 1px, transparent 1px 3px);
+}
+#status {
+  display: flex; justify-content: space-between; gap: 1em; flex-wrap: wrap;
+  background: var(--bar); color: var(--text);
+  font-family: var(--pixel); font-size: clamp(8px, 1.3vw, 11px); line-height: 1.6;
+  padding: 5px 8px; margin-bottom: 10px; text-transform: uppercase;
+}
+.box { border: 3px solid var(--bar); padding: 12px; margin-bottom: 12px; }
+.box-title { background: var(--bar); color: var(--text); padding: 4px 8px; margin-bottom: 10px; font-family: var(--pixel); font-size: .5em; line-height: 1.6; }
+.dim { color: var(--soft-grey); margin-top: 10px; }
+.dim a { color: var(--soft-cyan); }
+
+/* game cards */
+.game-card { border: 2px solid var(--bar); padding: 10px; margin-bottom: 10px; }
+.game-card:last-child { margin-bottom: 0; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.card-name { font-family: var(--pixel); font-size: .55em; line-height: 1.6; color: var(--text); }
+.badge { background: var(--bar); color: var(--text); font-family: var(--pixel); font-size: .45em; line-height: 1.6; padding: 3px 6px; white-space: nowrap; }
+.card-tag { margin: 6px 0 0; color: var(--text); }
+.game-card.soon { border-color: var(--soft-grey); }
+.game-card.soon .card-name, .game-card.soon .card-tag { color: var(--soft-grey); }
+.play, .box button {
+  display: inline-block; margin-top: 8px; text-decoration: none; cursor: pointer;
+  font-family: var(--pixel); font-size: clamp(9px, 1.3vw, 11px);
+  background: color-mix(in srgb, var(--key) 70%, var(--bg)); color: #e6e2d6; border: 0;
+  border-bottom: 3px solid #1a1500; border-right: 3px solid #1a1500;
+  padding: 8px 10px; min-width: 3em;
+}
+.play:active, .box button:active { transform: translate(1px, 1px); border-width: 0 2px 2px 0; }
+.play:focus-visible, .box button:focus-visible { outline: 2px solid var(--white); }
+
+/* leaderboard */
+#board table { width: 100%; border-collapse: collapse; }
+#board th {
+  font-family: var(--pixel); font-size: .42em; line-height: 1.6; text-transform: uppercase;
+  color: var(--soft-cyan); text-align: left; padding: 2px 8px 6px 0; border-bottom: 2px solid var(--bar);
+}
+#board th.num, #board td.num { text-align: right; padding-right: 0; }
+#board td { color: var(--text); padding: 3px 8px 3px 0; }
+#board td.rank { color: var(--soft-yellow); }
+#board td.total { color: var(--soft-yellow); }
+#board tr.me td { color: var(--soft-green); }
+#board .empty { color: var(--soft-grey); margin: 4px 0 0; }
+#you { margin-top: 8px; }
+
+@media (max-width: 520px) {
+  body { padding: 8px 16px; }
+  #screen { padding: 8px; font-size: 18px; }
+  .play, .box button { padding: 8px 6px; }
+}
+  </style>
+</head>
+<body>
+  <main id="screen" class="crt">
+    <div id="status" aria-live="off">
+      <span id="st-land">STARWAYS 64</span>
+      <span id="st-user"></span>
+    </div>
+
+    <section class="box" aria-label="Games">
+      <div class="box-title">GAMES</div>
+      <div id="cards"></div>
+    </section>
+
+    <section class="box" aria-label="Leaderboard">
+      <div class="box-title">TOP SCOUTS</div>
+      <div id="board"><div class="empty">LOADING...</div></div>
+      <div id="you" class="dim" hidden></div>
+    </section>
+
+    <div class="dim">Old-school games for a 1982 home computer. Finish a game to post your score.</div>
+  </main>
+
+  <script>
+/* LOST STARWAYS HUB - game cards + shared leaderboard */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  var qs = new URLSearchParams(location.search);
+  var token = qs.get("token") || "";
+  var games = [];
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "content-type": "application/json" },
+      token ? { "x-usernode-token": token } : {});
+    return fetch(path, opts);
+  }
+  function up(s) { return String(s).toUpperCase(); }
+
+  /* ---------- game cards ---------- */
+  function renderCards() {
+    var el = $("cards");
+    el.textContent = "";
+    games.forEach(function (g) {
+      var card = document.createElement("div");
+      card.className = "game-card" + (g.status === "live" ? "" : " soon");
+      var head = document.createElement("div");
+      head.className = "card-head";
+      var name = document.createElement("span");
+      name.className = "card-name";
+      name.textContent = up(g.title);
+      head.appendChild(name);
+      if (g.status !== "live") {
+        var badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "COMING SOON";
+        head.appendChild(badge);
+      }
+      var tag = document.createElement("p");
+      tag.className = "card-tag";
+      tag.textContent = g.tagline;
+      card.appendChild(head);
+      card.appendChild(tag);
+      if (g.status === "live" && g.path) {
+        var play = document.createElement("a");
+        play.className = "play";
+        play.href = g.path + location.search;
+        play.textContent = "PLAY";
+        card.appendChild(play);
+      }
+      el.appendChild(card);
+    });
+  }
+
+  /* ---------- leaderboard ---------- */
+  function scoreCell(row, gameId) {
+    var v = row.scores && row.scores[gameId];
+    return typeof v === "number" ? v : 0;
+  }
+  function boardRow(row, i, games, me) {
+    var tr = document.createElement("tr");
+    if (me && row.username === me) tr.className = "me";
+    var td = document.createElement("td");
+    td.className = "rank";
+    td.textContent = String(i + 1);
+    tr.appendChild(td);
+    td = document.createElement("td");
+    td.textContent = row.username;
+    tr.appendChild(td);
+    games.forEach(function (g) {
+      td = document.createElement("td");
+      td.className = "num";
+      td.textContent = String(scoreCell(row, g.id));
+      tr.appendChild(td);
+    });
+    td = document.createElement("td");
+    td.className = "num total";
+    td.textContent = String(row.total);
+    tr.appendChild(td);
+    return tr;
+  }
+  function renderBoard(d) {
+    var el = $("board"), you = $("you");
+    el.textContent = "";
+    you.hidden = true;
+    if (d.viewer && d.viewer.username) $("st-user").textContent = up(d.viewer.username);
+    var live = d.games || [];
+    if (!(d.rows || []).length) {
+      var p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = "NO SCOUTS YET. BE THE FIRST.";
+      el.appendChild(p);
+      if (!d.viewer || !d.viewer.username) {
+        var hint = document.createElement("div");
+        hint.className = "empty";
+        hint.textContent = "OPEN THIS APP INSIDE HOMEROOM TO PLAY AND SCORE.";
+        el.appendChild(hint);
+      }
+      return;
+    }
+    var table = document.createElement("table");
+    var thead = document.createElement("thead"), trh = document.createElement("tr");
+    function th(text, num) {
+      var h = document.createElement("th");
+      if (num) h.className = "num";
+      h.textContent = text;
+      trh.appendChild(h);
+    }
+    th("#");
+    th("SCOUT");
+    live.forEach(function (g) { th(g.title.split(" ")[0].toUpperCase(), true); });
+    th("TOTAL", true);
+    thead.appendChild(trh);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+    d.rows.forEach(function (row, i) { tbody.appendChild(boardRow(row, i, live, d.viewer && d.viewer.username)); });
+    table.appendChild(tbody);
+    el.appendChild(table);
+    if (d.you) {
+      you.hidden = false;
+      you.textContent = "YOU: " + d.you.total + " PTS, RANK #" + d.you.rank;
+    }
+  }
+
+  fetch("games.json")
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (list) { games = list || []; renderCards(); })
+    .catch(function () { renderCards(); });
+
+  api("/api/leaderboard")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) { renderBoard(d || { viewer: null, games: games.filter(function (g) { return g.status === "live"; }), rows: [] }); })
+    .catch(function () {
+      $("board").textContent = "";
+      var p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = "SCOREBOARD UNREACHABLE. TRY AGAIN LATER.";
+      $("board").appendChild(p);
+    });
+})();
+  </script>
+</body>
+</html>
