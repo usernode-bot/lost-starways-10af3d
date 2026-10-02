@@ -89,6 +89,13 @@ async function migrate() {
         [id, name, score]
       );
     }
+    // One row for the second game so the hub board's ESCAPE column renders
+    // in staging previews instead of an all-zero column.
+    await pool.query(
+      `INSERT INTO game_scores (user_id, game_id, username, best_score)
+       VALUES ('staging-demo-scout1', 'escape-from-dracula', 'Staging demo scout 1', 240)
+       ON CONFLICT (user_id, game_id) DO NOTHING`
+    );
   }
 }
 
@@ -186,6 +193,11 @@ app.get('/favicon.ico', (_req, res) => res.status(204).end());
 // game keeps all state in the browser.
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'hub.html')));
 app.get('/play', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// Escape from Dracula is a completely separate game: its own page, engine,
+// saves and score id. It shares nothing with Lost Starways but the hub and
+// the score API. Registered before the catch-all, like /play, so a direct
+// visit doesn't fall through to the Lost Starways page.
+app.get('/dracula', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'dracula.html')));
 
 // Shared leaderboard. Identity is req.user only (platform JWT); the client
 // never sends a name. Scores are the product here, so this table is public.

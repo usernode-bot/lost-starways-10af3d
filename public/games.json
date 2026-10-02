@@ -10,9 +10,9 @@
   {
     "id": "escape-from-dracula",
     "title": "Escape from Dracula",
-    "tagline": "Flee the count's castle before dawn. Coming soon to the Starways.",
-    "status": "soon",
-    "path": null,
-    "maxScore": 5000
+    "tagline": "Escape Castle Dracula before midnight.",
+    "status": "live",
+    "path": "/dracula",
+    "maxScore": 1500
   }
 ]

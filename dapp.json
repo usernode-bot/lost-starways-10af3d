@@ -39,6 +39,19 @@
       "path": "/play",
       "expectSelector": "#keys button[data-cmd='sound'] ~ button[data-cmd='hub']",
       "expectText": "Lobby"
+    },
+    {
+      "id": "game.dracula-title-screen",
+      "name": "Escape from Dracula game screen loads",
+      "path": "/dracula",
+      "expectSelector": "#screen",
+      "expectText": "VAMPIRE ESCAPE",
+      "visual": true,
+      "impact": [
+        "public/dracula.html",
+        "public/games.json",
+        "server.js"
+      ]
     }
   ],
   "governance": {
