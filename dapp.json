@@ -32,6 +32,13 @@
       "name": "Command input sits under the picture",
       "path": "/play",
       "expectSelector": "#pic + #cmdline"
+    },
+    {
+      "id": "game.lobby-button",
+      "name": "Lobby button sits next to SND",
+      "path": "/play",
+      "expectSelector": "#keys button[data-cmd='sound'] ~ button[data-cmd='hub']",
+      "expectText": "Lobby"
     }
   ],
   "governance": {
