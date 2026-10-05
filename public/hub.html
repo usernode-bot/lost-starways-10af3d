@@ -67,6 +67,11 @@ body {
 /* game cards */
 .game-card { border: 2px solid var(--bar); padding: 10px; margin-bottom: 10px; }
 .game-card:last-child { margin-bottom: 0; }
+.card-poster {
+  display: block; width: 100%; height: auto; max-height: 190px;
+  object-fit: cover; object-position: center; margin: 0 0 8px;
+  border: 2px solid var(--bar); image-rendering: pixelated;
+}
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .card-name { font-family: var(--pixel); font-size: .55em; line-height: 1.6; color: var(--text); }
 .badge { background: var(--bar); color: var(--text); font-family: var(--pixel); font-size: .45em; line-height: 1.6; padding: 3px 6px; white-space: nowrap; }
@@ -148,6 +153,14 @@ body {
     games.forEach(function (g) {
       var card = document.createElement("div");
       card.className = "game-card" + (g.status === "live" ? "" : " soon");
+      if (g.poster) {
+        var poster = document.createElement("img");
+        poster.className = "card-poster";
+        poster.src = g.poster;
+        poster.alt = g.title + " poster art";
+        poster.loading = "lazy";
+        card.appendChild(poster);
+      }
       var head = document.createElement("div");
       head.className = "card-head";
       var name = document.createElement("span");
