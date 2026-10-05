@@ -46,6 +46,12 @@
       "expectText": "Lobby"
     },
     {
+      "id": "dracula.input-under-picture",
+      "name": "Dracula command input sits under the picture",
+      "path": "/dracula",
+      "expectSelector": "#pic + #cmdline"
+    },
+    {
       "id": "game.dracula-title-screen",
       "name": "Escape from Dracula game screen loads",
       "path": "/dracula",
