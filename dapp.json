@@ -3,6 +3,11 @@
   "secrets": [],
   "tests": [
     {
+      "name": "Hub shows each game's poster banner",
+      "path": "/",
+      "expectSelector": "#cards .game-card .card-poster"
+    },
+    {
       "id": "hub.hub-renders",
       "name": "Hub shows game cards and leaderboard",
       "path": "/",

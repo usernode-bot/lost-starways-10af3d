@@ -7,18 +7,18 @@
   <meta name="description" content="An old-school C64-style game collection with a shared top-scouts leaderboard.">
   <link rel="stylesheet" href="fonts.css">
   <style>
-/* LOST STARWAYS HUB - same C64 look as the game */
+/* LOST STARWAYS HUB - vintage poster look (colours from the two game posters) */
 :root {
-  --border: #6c5eb5;   /* light blue */
-  --bg: #352879;       /* blue */
-  --fg: #6c5eb5;       /* light blue */
-  --white: #ffffff;
-  --yellow: #b8c76f;
-  --cyan: #70a4b2;
-  --green: #9ad284;
-  --red: #68372b;
-  --grey: #959595;
-  --key: #433900;
+  --border: #8d7c50;   /* aged brass frame */
+  --bg: #0d1018;       /* deep space blue-black */
+  --fg: #ecdfba;       /* aged paper cream */
+  --white: #fff8e8;
+  --yellow: #e2a33c;   /* warm amber */
+  --cyan: #6fb5b0;     /* poster teal */
+  --green: #6fb5b0;    /* teal (poster accent) */
+  --red: #b3272d;      /* poster red */
+  --grey: #b3a682;
+  --key: #8a5a14;      /* deep amber (button edge) */
   /* softer, easier-on-the-eye versions (follow each land's colours) */
   --text: color-mix(in srgb, var(--fg) 30%, #f1eee4);
   --soft-yellow: color-mix(in srgb, var(--yellow) 55%, #f1eee4);
@@ -34,20 +34,21 @@ html, body { height: 100%; }
 body {
   margin: 0;
   padding: 16px;
-  background: color-mix(in srgb, var(--border) 70%, #0d0b1e);
-  display: flex; align-items: center; justify-content: center;
+  background: #070910;
+  display: flex; justify-content: center;
   font-family: var(--read);
   color: var(--text);
 }
 #screen {
   position: relative;
+  margin: auto;
   width: min(100%, 760px);
   min-height: min(100%, 920px);
   background: var(--bg);
   padding: 14px;
   font-size: clamp(18px, 2.5vw, 23px);
   line-height: 1.3;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 8px 40px rgba(0,0,0,.35);
+  box-shadow: 0 0 0 1px rgba(236,223,186,.06), 0 8px 40px rgba(0,0,0,.6);
 }
 #screen.crt::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -55,29 +56,36 @@ body {
 }
 #status {
   display: flex; justify-content: space-between; gap: 1em; flex-wrap: wrap;
-  background: var(--bar); color: var(--text);
+  color: var(--yellow);
   font-family: var(--pixel); font-size: clamp(8px, 1.3vw, 11px); line-height: 1.6;
   padding: 5px 8px; margin-bottom: 10px; text-transform: uppercase;
+  border-bottom: 2px solid var(--border);
 }
-.box { border: 3px solid var(--bar); padding: 12px; margin-bottom: 12px; }
-.box-title { background: var(--bar); color: var(--text); padding: 4px 8px; margin-bottom: 10px; font-family: var(--pixel); font-size: .5em; line-height: 1.6; }
+.box { border: 3px double var(--border); padding: 12px; margin-bottom: 12px; }
+.box-title { color: var(--yellow); padding: 0 8px 6px 0; margin-bottom: 10px; font-family: var(--pixel); font-size: .5em; line-height: 1.6; border-bottom: 2px solid var(--border); letter-spacing: 2px; }
 .dim { color: var(--soft-grey); margin-top: 10px; }
 .dim a { color: var(--soft-cyan); }
 
 /* game cards */
-.game-card { border: 2px solid var(--bar); padding: 10px; margin-bottom: 10px; }
+.game-card { border: 2px solid var(--border); padding: 10px; margin-bottom: 10px; }
 .game-card:last-child { margin-bottom: 0; }
-.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.card-name { font-family: var(--pixel); font-size: .55em; line-height: 1.6; color: var(--text); }
-.badge { background: var(--bar); color: var(--text); font-family: var(--pixel); font-size: .45em; line-height: 1.6; padding: 3px 6px; white-space: nowrap; }
+.card-poster {
+  display: block; width: 100%; height: auto; margin: 0 0 8px;
+  border: 2px solid var(--border);
+}
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.card-name { font-family: var(--pixel); font-size: .55em; line-height: 1.6; color: var(--yellow); }
+.badge { background: var(--red); color: var(--white); font-family: var(--pixel); font-size: .45em; line-height: 1.6; padding: 3px 6px; white-space: nowrap; }
 .card-tag { margin: 6px 0 0; color: var(--text); }
 .game-card.soon { border-color: var(--soft-grey); }
 .game-card.soon .card-name, .game-card.soon .card-tag { color: var(--soft-grey); }
+/* poster red accent for the Dracula card */
+.game-card[data-game="escape-from-dracula"] .card-name { color: #e85a4a; }
 .play, .box button {
   display: inline-block; margin-top: 8px; text-decoration: none; cursor: pointer;
   font-family: var(--pixel); font-size: clamp(9px, 1.3vw, 11px);
-  background: color-mix(in srgb, var(--key) 70%, var(--bg)); color: #e6e2d6; border: 0;
-  border-bottom: 3px solid #1a1500; border-right: 3px solid #1a1500;
+  background: var(--yellow); color: #201403; border: 0;
+  border-bottom: 3px solid var(--key); border-right: 3px solid var(--key);
   padding: 8px 10px; min-width: 3em;
 }
 .play:active, .box button:active { transform: translate(1px, 1px); border-width: 0 2px 2px 0; }
@@ -87,7 +95,7 @@ body {
 #board table { width: 100%; border-collapse: collapse; }
 #board th {
   font-family: var(--pixel); font-size: .42em; line-height: 1.6; text-transform: uppercase;
-  color: var(--soft-cyan); text-align: left; padding: 2px 8px 6px 0; border-bottom: 2px solid var(--bar);
+  color: var(--soft-cyan); text-align: left; padding: 2px 8px 6px 0; border-bottom: 2px solid var(--border);
 }
 #board th.num, #board td.num { text-align: right; padding-right: 0; }
 #board td { color: var(--text); padding: 3px 8px 3px 0; }
@@ -148,6 +156,7 @@ body {
     games.forEach(function (g) {
       var card = document.createElement("div");
       card.className = "game-card" + (g.status === "live" ? "" : " soon");
+      if (g.id) card.dataset.game = g.id;
       var head = document.createElement("div");
       head.className = "card-head";
       var name = document.createElement("span");
@@ -160,10 +169,18 @@ body {
         badge.textContent = "COMING SOON";
         head.appendChild(badge);
       }
+      card.appendChild(head);
+      if (g.poster) {
+        var poster = document.createElement("img");
+        poster.className = "card-poster";
+        poster.src = g.poster;
+        poster.alt = g.title + " poster art";
+        poster.loading = "lazy";
+        card.appendChild(poster);
+      }
       var tag = document.createElement("p");
       tag.className = "card-tag";
       tag.textContent = g.tagline;
-      card.appendChild(head);
       card.appendChild(tag);
       if (g.status === "live" && g.path) {
         var play = document.createElement("a");
