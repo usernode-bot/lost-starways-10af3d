@@ -52,6 +52,11 @@
         "public/games.json",
         "server.js"
       ]
+    },
+    {
+      "name": "Dracula sound toggle shows its state",
+      "path": "/dracula",
+      "expectText": "SND ON"
     }
   ],
   "governance": {
