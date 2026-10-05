@@ -159,8 +159,15 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 #modlist button { font-size: .75em; padding: 3px 6px; }
 
 @media (max-width: 520px) {
-  body { padding: 8px 16px; }
+  /* pin the shell to the visual viewport so the on-screen keyboard can't cover
+     the command line; on phones it sits directly under the picture, and the
+     story log scrolls between it and the quick keys */
+  body { padding: 8px 16px; height: 100vh; height: 100dvh; overflow: hidden; }
   #screen { padding: 8px; font-size: 18px; }
+  #pic { order: 0; }
+  #cmdline { order: 1; }
+  #out { order: 2; min-height: 4em; }
+  #keys { order: 3; }
   #keys button { padding: 8px 6px; }
 }
 
@@ -709,8 +716,9 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
     src.start(t); src.stop(t + dur + 0.02);
   }
 
-  /* ambient layer: drone loop, heartbeat and occasional accents (all synthesized) */
-  var amb = { drone: null, beat: null, accent: null, danger: 0 };
+  /* ambient layer: cycling drone, heartbeat and occasional accents (all synthesized) */
+  var amb = { drone: null, beat: null, accent: null, danger: 0, cycle: null };
+  var DRONE_ON_MS = 30000, DRONE_OFF_MS = 180000;
   function startDrone() {
     if (amb.drone) return;
     var c = Snd.ctx, g = c.createGain();
@@ -731,9 +739,27 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
       var t = Snd.ctx.currentTime;
       d.g.gain.cancelScheduledValues(t);
       d.g.gain.setValueAtTime(d.g.gain.value, t);
-      d.g.gain.linearRampToValueAtTime(0, t + 0.4);
-      d.o1.stop(t + 0.5); d.o2.stop(t + 0.5);
+      d.g.gain.linearRampToValueAtTime(0, t + 3);
+      d.o1.stop(t + 3.1); d.o2.stop(t + 3.1);
     } catch (e) { }
+  }
+  /* drone cycle: ~30s on, then ~3min off, repeating; idempotent so the
+     unlock-on-every-keystroke path can't restart or double-schedule it */
+  function startCycle() {
+    if (amb.cycle) return;
+    startDrone();
+    amb.cycle = setTimeout(endOnPhase, DRONE_ON_MS);
+  }
+  function endOnPhase() {
+    amb.cycle = null;
+    stopDrone();
+    if (!Snd.on) return;
+    amb.cycle = setTimeout(endOffPhase, DRONE_OFF_MS);
+  }
+  function endOffPhase() {
+    amb.cycle = null;
+    if (!Snd.on) return;
+    startCycle();
   }
   function heartbeat() {
     if (!Snd.on || !Snd.ctx || amb.danger <= 0) { amb.beat = null; return; }
@@ -759,10 +785,11 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
   }
   function setAmbient(run) {
     if (run && Snd.on && Snd.ctx && Snd.ctx.state === "running") {
-      startDrone();
+      startCycle();
       if (!amb.beat && amb.danger > 0) heartbeat();
       if (!amb.accent) accents();
     } else {
+      if (amb.cycle) { clearTimeout(amb.cycle); amb.cycle = null; }
       stopDrone();
       if (amb.beat) { clearTimeout(amb.beat); amb.beat = null; }
       if (amb.accent) { clearTimeout(amb.accent); amb.accent = null; }
@@ -2159,6 +2186,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   /* ---------- input ---------- */
   function sync() { typed.textContent = cmd.value.toUpperCase(); }
   cmd.addEventListener("input", function () { sync(); S.Sound.play("key"); });
+  cmd.addEventListener("focus", function () { cmd.scrollIntoView({ block: "nearest" }); });
   document.addEventListener("keydown", function (e) {
     S.Sound.unlock(); // audio must be unlocked inside a user gesture
     if (e.target && e.target.id === "modtext") { if (e.key === "Escape") closeOverlays(); return; }
