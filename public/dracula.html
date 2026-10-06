@@ -2173,6 +2173,8 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
 
   /* ---------- input ---------- */
   function sync() { typed.textContent = cmd.value.toUpperCase(); }
+  function touchPrimary() { return window.matchMedia && window.matchMedia("(pointer: coarse)").matches; }
+  function dismissKeyboard() { if (touchPrimary() && document.activeElement === cmd) cmd.blur(); }
   cmd.addEventListener("input", function () { sync(); S.Sound.play("key"); });
   document.addEventListener("keydown", function (e) {
     S.Sound.unlock(); // audio must be unlocked inside a user gesture
@@ -2181,7 +2183,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     if (mode === "boot") { e.preventDefault(); return title(); }
     if (e.key === "Tab") { e.preventDefault(); return submit("i"); }
     if (document.activeElement !== cmd) cmd.focus();
-    if (e.key === "Enter") { e.preventDefault(); var v = cmd.value; cmd.value = ""; sync(); submit(v); }
+    if (e.key === "Enter") { e.preventDefault(); var v = cmd.value; cmd.value = ""; sync(); submit(v); dismissKeyboard(); }
     else if (e.key === "ArrowUp" && history.length) { e.preventDefault(); hpos = Math.max(0, hpos - 1); cmd.value = history[hpos]; sync(); }
     else if (e.key === "ArrowDown" && history.length) { e.preventDefault(); hpos = Math.min(history.length, hpos + 1); cmd.value = history[hpos] || ""; sync(); }
   });
