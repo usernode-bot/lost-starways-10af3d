@@ -52,6 +52,12 @@
       "expectSelector": "#pic + #cmdline"
     },
     {
+      "id": "dracula.arrival-scene",
+      "name": "Dracula has an arrival scene panel",
+      "path": "/dracula",
+      "expectSelector": "#arrival .arrival-art"
+    },
+    {
       "id": "game.dracula-title-screen",
       "name": "Escape from Dracula game screen loads",
       "path": "/dracula",
