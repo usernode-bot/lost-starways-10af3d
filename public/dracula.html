@@ -180,12 +180,12 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 
     <canvas id="pic" aria-label="Picture of the current location"></canvas>
 
-    <div id="out" role="log" aria-live="polite"></div>
-
     <label id="cmdline" for="cmd">
       <span class="prompt">&gt;</span><span id="typed"></span><span id="cursor">&#9608;</span>
       <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Type a command">
     </label>
+
+    <div id="out" role="log" aria-live="polite"></div>
 
     <nav id="keys" aria-label="Quick commands">
       <button data-cmd="forward">F</button><button data-cmd="back">B</button>
@@ -710,12 +710,17 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
   }
 
   /* ambient layer: drone loop, heartbeat and occasional accents (all synthesized) */
-  var amb = { drone: null, beat: null, accent: null, danger: 0 };
+  /* The drone cycles on its own clock: ~30s audible, then ~3min silence,
+     with a smooth fade at each end of an on-period. The cycle is never
+     restarted or cut short by unlock()/typing, and a suspended audio
+     context (the mobile keyboard does that) must not tear it down. */
+  var DRONE_ON_MS = 30000, DRONE_OFF_MS = 180000, DRONE_FADE_S = 3;
+  var amb = { drone: null, beat: null, accent: null, danger: 0, cycle: null };
   function startDrone() {
-    if (amb.drone) return;
+    if (amb.drone || amb.cycle) return; // a running cycle completes on its own
     var c = Snd.ctx, g = c.createGain();
     g.gain.setValueAtTime(0, c.currentTime);
-    g.gain.linearRampToValueAtTime(0.016, c.currentTime + 3);
+    g.gain.linearRampToValueAtTime(0.016, c.currentTime + DRONE_FADE_S); // fade-in
     var f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 220;
     var o1 = c.createOscillator(), o2 = c.createOscillator();
     o1.type = "triangle"; o1.frequency.value = 55;
@@ -723,8 +728,29 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
     o1.connect(f); o2.connect(f); f.connect(g); g.connect(c.destination);
     o1.start(); o2.start();
     amb.drone = { o1: o1, o2: o2, g: g };
+    amb.cycle = setTimeout(cycleTick, DRONE_ON_MS);
   }
-  function stopDrone() {
+  function cycleTick() { // a cycle timer fired: clear it, then move to the next phase
+    amb.cycle = null;
+    if (amb.drone) droneOff();
+    else startDrone();
+  }
+  function droneOff() { // end of the on-period: fade out, then rest
+    var d = amb.drone;
+    amb.drone = null;
+    if (d) {
+      try {
+        var t = Snd.ctx.currentTime;
+        d.g.gain.cancelScheduledValues(t);
+        d.g.gain.setValueAtTime(d.g.gain.value, t);
+        d.g.gain.linearRampToValueAtTime(0, t + DRONE_FADE_S); // fade-out
+        d.o1.stop(t + DRONE_FADE_S + 0.1); d.o2.stop(t + DRONE_FADE_S + 0.1);
+      } catch (e) { }
+    }
+    amb.cycle = setTimeout(cycleTick, DRONE_OFF_MS);
+  }
+  function stopDrone() { // sound turned off: end the cycle entirely
+    if (amb.cycle) { clearTimeout(amb.cycle); amb.cycle = null; }
     var d = amb.drone; if (!d) return;
     amb.drone = null;
     try {
@@ -736,7 +762,7 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
     } catch (e) { }
   }
   function heartbeat() {
-    if (!Snd.on || !Snd.ctx || amb.danger <= 0) { amb.beat = null; return; }
+    if (!Snd.on || !Snd.ctx || Snd.ctx.state !== "running" || amb.danger <= 0) { amb.beat = null; return; }
     var periods = [0, 1.15, 0.8, 0.5], vols = [0, 0.1, 0.13, 0.17], lv = amb.danger;
     function thump(delay, vol) {
       var c = Snd.ctx, t = c.currentTime + delay;
@@ -753,12 +779,16 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
     amb.beat = setTimeout(heartbeat, periods[lv] * 1000);
   }
   function accents() {
-    if (!Snd.on || !Snd.ctx) { amb.accent = null; return; }
+    if (!Snd.on || !Snd.ctx || Snd.ctx.state !== "running") { amb.accent = null; return; }
     Snd.play(Math.random() < 0.6 ? "howl" : "bats");
     amb.accent = setTimeout(accents, 25000 + Math.random() * 35000);
   }
   function setAmbient(run) {
-    if (run && Snd.on && Snd.ctx && Snd.ctx.state === "running") {
+    if (run && Snd.on && Snd.ctx) {
+      // A suspended context is resumed, not treated as "off": the mobile
+      // keyboard interrupts audio while typing, and stopping the drone
+      // here made it fade out and restart every time the input focused.
+      if (Snd.ctx.state === "suspended") { try { Snd.ctx.resume(); } catch (e) { } }
       startDrone();
       if (!amb.beat && amb.danger > 0) heartbeat();
       if (!amb.accent) accents();

@@ -62,6 +62,12 @@
       "name": "Dracula sound toggle shows its state",
       "path": "/dracula",
       "expectText": "SND ON"
+    },
+    {
+      "id": "game.dracula-input-under-picture",
+      "name": "Dracula command input sits under the picture",
+      "path": "/dracula",
+      "expectSelector": "#pic + #cmdline"
     }
   ],
   "governance": {
