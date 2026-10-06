@@ -85,6 +85,9 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
   image-rendering: pixelated; image-rendering: crisp-edges;
   background: #000;
 }
+#pic.hd {
+  image-rendering: auto;   /* painted rooms resample smoothly, no fat pixels */
+}
 #out {
   flex: 1; min-height: 6em; overflow-y: auto; margin-top: 10px;
   word-wrap: break-word; padding-right: 4px;
@@ -631,6 +634,7 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
     this.anim = 0;
   };
   S.Gfx.prototype.draw = function (ops, check, animate) {
+    this.canvas.width = W; this.canvas.height = H; // snap back from any hi-res room
     this.buf.fill(0);
     S.raster(ops, this.buf, check);
     var self = this, row = animate ? 0 : H, token = ++this.anim;
@@ -646,11 +650,532 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
     // wipe to black first, then reveal in bands
     this.ctx.fillStyle = "#000"; this.ctx.fillRect(0, 0, W, H);
     (function step() {
-      if (token !== self.anim) return;
+      if (token !== self.anim || self.canvas.classList.contains("hd")) return;
       row = Math.min(H, row + 6);
       blit(row);
       if (row < H) requestAnimationFrame(step);
     })();
+  };
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+/* ---- js/gfx-hd.js ---- */
+/* LOST STARWAYS - hi-res painted pictures (Canvas 2D gradients, no image files).
+   Rooms registered in S.GfxHD.painters are painted at full resolution with
+   moonlight, gradients and real scenery; every other room keeps the classic
+   160x100 fat-pixel renderer in js/gfx.js. */
+(function (G) {
+  var S = G.Starways;
+
+  var HD = S.GfxHD = {
+    W: 960,   // 16:5, the picture box's shape - six times finer across,
+    H: 300,   // and three times finer down, than the 160x100 fat-pixel grid
+    anim: 0,
+    painters: {},  // room key -> function (ctx, w, h, engine)
+
+    has: function (roomKey) { return !!(roomKey && this.painters[roomKey]); },
+
+    draw: function (canvas, engine, animate) {
+      var key = engine && engine.state ? engine.state.room : null;
+      var painter = key && this.painters[key];
+      if (!painter) return false;
+      var W = this.W, H = this.H, self = this;
+      canvas.width = W; canvas.height = H;
+      canvas.classList.add("hd");
+      var off = G.document.createElement("canvas");
+      off.width = W; off.height = H;
+      painter(off.getContext("2d"), W, H, engine);
+      var ctx = canvas.getContext("2d");
+      var token = ++this.anim;
+      if (!animate) { ctx.drawImage(off, 0, 0); return true; }
+      // wipe to black, then reveal in bands - the classic draw-in, at hi-res
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      var row = 0;
+      (function step() {
+        if (token !== self.anim || !canvas.classList.contains("hd")) return;
+        row = Math.min(H, row + 18);  // 18 of 300 - the same share as 6 of 100
+        ctx.drawImage(off, 0, 0, W, row, 0, 0, W, row);
+        if (row < H) G.requestAnimationFrame(step);
+      })();
+      return true;
+    }
+  };
+
+  // Deterministic PRNG (mulberry32) so grain and stars never shimmer between redraws
+  function rng(seed) {
+    var s = (seed | 0) || 1;
+    return function () {
+      s = (s + 0x6D2B79F5) | 0; var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function vgrad(ctx, x, y, w, h, stops) {
+    var g = ctx.createLinearGradient(0, y, 0, y + h);
+    stops.forEach(function (st) { g.addColorStop(st[0], st[1]); });
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  }
+
+  function glow(ctx, cx, cy, r, rgb, a) {
+    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, "rgba(" + rgb + "," + a + ")");
+    g.addColorStop(1, "rgba(" + rgb + ",0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.3); ctx.fill();
+  }
+
+  function wood(ctx, x, y, w, h, seed, light, dark) {
+    var g = ctx.createLinearGradient(x, 0, x + w, 0);
+    g.addColorStop(0, dark); g.addColorStop(0.4, light);
+    g.addColorStop(0.72, dark); g.addColorStop(1, dark);
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    var r = rng(seed);
+    ctx.strokeStyle = "rgba(0,0,0,0.22)"; ctx.lineWidth = 1;
+    for (var i = 0; i < 9; i++) {
+      var gy = y + 3 + r() * (h - 6), gx = x + r() * w * 0.4, len = 20 + r() * (w * 0.5);
+      ctx.beginPath(); ctx.moveTo(gx, gy);
+      ctx.quadraticCurveTo(gx + len / 2, gy + (r() - 0.5) * 2.5, gx + len, gy + (r() - 0.5) * 2);
+      ctx.stroke();
+    }
+  }
+
+  /* THE GUEST BEDROOM - a painted moonlit stone room, same furniture layout as
+     the fat-pixel picture: barred window upper left with the moon, four-poster
+     bed left, heavy oak door with its lightswitch, tall wardrobe far right.
+     Reads the same conditions the data picture does, so picture and text agree. */
+  HD.painters["castle:bedroom"] = function (ctx, W, H, E) {
+    var st = E.state, pid = st.pack;
+    function flag(n) { return E.check("flag:" + n, pid); }
+    function here(id) { return E.check("here:" + id, pid); }
+
+    if (!E.canSee()) { // darkness: a pair of pale eyes, as the fat-pixel path
+      ctx.fillStyle = "#030304"; ctx.fillRect(0, 0, W, H);
+      glow(ctx, 432, 150, 110, "56,64,86", 0.14);
+      [420, 444].forEach(function (x) {
+        glow(ctx, x, 150, 15, "207,214,222", 0.32);
+        ctx.fillStyle = "#cfd6de";
+        ctx.beginPath(); ctx.ellipse(x, 150, 5, 3.4, 0, 0, 6.3); ctx.fill();
+      });
+      return;
+    }
+
+    var lit = E.check("lit", pid);
+    var bedSearched = flag("bed_searched"), rugMoved = flag("rug_moved");
+    var hatchOpen = flag("hatch_open"), wardrobeOpen = flag("wardrobe_open");
+    var bottle = here("bottle"), shirt = here("shirt");
+
+    var FLOOR = 216;                     // where the wall meets the floor
+    var WX = 360, WY = 30, WW = 192, WH = 120;   // the window
+
+    /* --- the wall: moonlit stone courses --- */
+    vgrad(ctx, 0, 0, W, FLOOR, [[0, "#171b28"], [0.55, "#222738"], [1, "#2b2c3a"]]);
+    var r = rng(777), y, x, i;
+    for (y = 18; y < FLOOR; y += 26) {
+      var course = Math.round((y - 18) / 26), coff = (course % 2) * 48;
+      for (x = -coff; x < W; x += 96) {
+        var v = r();
+        ctx.fillStyle = "rgba(" + (40 + ((v * 20) | 0)) + "," + (47 + ((v * 22) | 0)) + "," + (64 + ((v * 26) | 0)) + ",0.45)";
+        ctx.fillRect(x + 1.5, y + 1.5, 93, 23);
+        ctx.fillStyle = "rgba(196,208,228,0.055)";   // moon catching the top edge
+        ctx.fillRect(x + 1.5, y + 1.5, 93, 1.5);
+        ctx.fillStyle = "rgba(0,0,0,0.28)";          // worn under-edge
+        ctx.fillRect(x + 1.5, y + 23, 93, 1.5);
+        ctx.fillStyle = "rgba(10,12,18,0.6)";        // vertical mortar joint
+        ctx.fillRect(x + 94, y, 3, 26);
+      }
+      ctx.fillStyle = "rgba(10,12,18,0.6)";          // horizontal mortar
+      ctx.fillRect(0, y + 24.5, W, 2.5);
+    }
+    // deep shadow away from the window
+    var lsh = ctx.createLinearGradient(0, 0, 220, 0);
+    lsh.addColorStop(0, "rgba(0,0,0,0.5)"); lsh.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = lsh; ctx.fillRect(0, 0, 220, FLOOR);
+    var rsh = ctx.createLinearGradient(W, 0, W - 280, 0);
+    rsh.addColorStop(0, "rgba(0,0,0,0.5)"); rsh.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = rsh; ctx.fillRect(W - 280, 0, 280, FLOOR);
+
+    /* --- heavy ceiling beam --- */
+    vgrad(ctx, 0, 0, W, 18, [[0, "#3d2d1a"], [0.7, "#221709"], [1, "#0e0a05"]]);
+    ctx.fillStyle = "rgba(150,110,60,0.35)"; ctx.fillRect(0, 17, W, 1.5);
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 18.5, W, 4);
+
+    /* --- cobweb in the corner --- */
+    ctx.strokeStyle = "rgba(205,215,225,0.20)"; ctx.lineWidth = 1;
+    var ang;
+    for (i = 0; i < 6; i++) {
+      ang = 0.25 + i * 0.22;
+      ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(ang) * 170, Math.sin(ang) * 170); ctx.stroke();
+    }
+    for (var rad = 34; rad <= 170; rad += 34) {
+      ctx.beginPath();
+      for (i = 0; i <= 12; i++) {
+        var a = 0.25 + (i / 12) * 1.12, sag = 1 + 0.02 * Math.sin(a * 9);
+        var px = Math.cos(a) * rad * sag, py = Math.sin(a) * rad * sag;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(205,215,225,0.5)";         // the spider
+    ctx.beginPath(); ctx.arc(58, 66, 3, 0, 6.3); ctx.fill();
+
+    /* --- the barred window, moon and stars --- */
+    var MX = 476, MY = 74;
+    glow(ctx, WX + WW / 2, WY + WH / 2, 250, "154,190,225", 0.10);
+    var reveal = ctx.createLinearGradient(WX - 10, 0, WX + WW + 10, 0);
+    reveal.addColorStop(0, "#2c3344"); reveal.addColorStop(0.5, "#454e63"); reveal.addColorStop(1, "#232a3a");
+    ctx.fillStyle = reveal; ctx.fillRect(WX - 10, WY - 10, WW + 20, WH + 20);
+    ctx.fillStyle = "#0d0c13"; ctx.fillRect(WX - 3, WY - 3, WW + 6, WH + 6);
+    var sky = ctx.createLinearGradient(0, WY, 0, WY + WH);
+    sky.addColorStop(0, "#0a1122"); sky.addColorStop(0.55, "#16233e"); sky.addColorStop(1, "#28395a");
+    ctx.fillStyle = sky; ctx.fillRect(WX, WY, WW, WH);
+    var rs = rng(462);
+    for (i = 0; i < 46; i++) {
+      var sx = WX + 4 + rs() * (WW - 8), sy = WY + 4 + rs() * (WH - 8);
+      if (Math.abs(sx - MX) < 46 && Math.abs(sy - MY) < 46) continue;  // none over the moon
+      ctx.fillStyle = "rgba(220,232,245," + (0.15 + rs() * 0.6).toFixed(2) + ")";
+      ctx.fillRect(sx, sy, rs() < 0.25 ? 2 : 1, 1);
+    }
+    glow(ctx, MX, MY, 80, "168,196,226", 0.34);
+    var mg = ctx.createRadialGradient(MX - 7, MY - 7, 2, MX, MY, 27);
+    mg.addColorStop(0, "#ffffff"); mg.addColorStop(0.65, "#e8eef4"); mg.addColorStop(1, "#b8c9d8");
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(MX, MY, 27, 0, 6.3); ctx.fill();
+    ctx.fillStyle = "rgba(150,168,186,0.35)";        // craters, barely
+    ctx.beginPath(); ctx.arc(MX + 8, MY + 4, 4.5, 0, 6.3); ctx.fill();
+    ctx.beginPath(); ctx.arc(MX - 6, MY + 9, 3, 0, 6.3); ctx.fill();
+    ctx.beginPath(); ctx.arc(MX + 2, MY - 10, 2.5, 0, 6.3); ctx.fill();
+    [408, 444, 480, 516].forEach(function (bx) {     // iron bars
+      var bg = ctx.createLinearGradient(bx, 0, bx + 6, 0);
+      bg.addColorStop(0, "#050508"); bg.addColorStop(0.45, "#2e2f3a"); bg.addColorStop(1, "#0a0a10");
+      ctx.fillStyle = bg; ctx.fillRect(bx, WY - 4, 6, WH + 8);
+    });
+    var hbg = ctx.createLinearGradient(0, 88, 0, 95);
+    hbg.addColorStop(0, "#050508"); hbg.addColorStop(0.5, "#26272f"); hbg.addColorStop(1, "#0a0a10");
+    ctx.fillStyle = hbg; ctx.fillRect(WX, 88, WW, 7);
+    // worn stone sill, catching the light
+    var sill = ctx.createLinearGradient(0, WY + WH, 0, WY + WH + 18);
+    sill.addColorStop(0, "#6b7488"); sill.addColorStop(0.4, "#454d61"); sill.addColorStop(1, "#232938");
+    ctx.fillStyle = sill; ctx.fillRect(WX - 16, WY + WH, WW + 32, 18);
+    ctx.fillStyle = "rgba(225,235,250,0.28)"; ctx.fillRect(WX - 16, WY + WH, WW + 32, 2);
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(WX - 16, WY + WH + 18, WW + 32, 5);
+
+    if (bottle) {   // the brown medicine bottle on the sill
+      var bX = 424, bY = WY + WH + 2;
+      var body = ctx.createLinearGradient(bX, 0, bX + 22, 0);
+      body.addColorStop(0, "#33200e"); body.addColorStop(0.45, "#96622c"); body.addColorStop(1, "#2c1a0a");
+      ctx.fillStyle = body;
+      ctx.beginPath();
+      ctx.moveTo(bX + 3, bY); ctx.lineTo(bX + 3, bY - 14);
+      ctx.quadraticCurveTo(bX + 3, bY - 19, bX + 7, bY - 19);
+      ctx.lineTo(bX + 8, bY - 24); ctx.lineTo(bX + 14, bY - 24);
+      ctx.lineTo(bX + 15, bY - 19); ctx.quadraticCurveTo(bX + 19, bY - 19, bX + 19, bY - 14);
+      ctx.lineTo(bX + 19, bY); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#5c3a18"; ctx.fillRect(bX + 7, bY - 27, 8, 4);       // cork
+      ctx.fillStyle = "rgba(255,225,170,0.5)"; ctx.fillRect(bX + 6, bY - 13, 2, 11); // highlight
+    }
+
+    /* --- the plank floor --- */
+    var fl = ctx.createLinearGradient(0, FLOOR, 0, H);
+    fl.addColorStop(0, "#4a3822"); fl.addColorStop(0.5, "#332512"); fl.addColorStop(1, "#1c1309");
+    ctx.fillStyle = fl; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, FLOOR, W, 2);
+    var plankY = [224, 234, 246, 261, 278, 296], rf = rng(2024), p;
+    for (p = 0; p < plankY.length; p++) {
+      var py = plankY[p], top = p ? plankY[p - 1] : FLOOR;
+      ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, py - 1.5, W, 2);
+      ctx.fillStyle = "rgba(214,180,120,0.07)"; ctx.fillRect(0, py + 0.5, W, 1);
+      for (x = (p * 137) % 160; x < W; x += 210 + ((rf() * 40) | 0)) {
+        ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(x, top, 2, py - top);
+      }
+    }
+    ctx.strokeStyle = "rgba(0,0,0,0.18)"; ctx.lineWidth = 1;   // grain
+    for (i = 0; i < 26; i++) {
+      var gy = FLOOR + 8 + rf() * (H - FLOOR - 14), gx = rf() * W, len = 30 + rf() * 90;
+      ctx.beginPath(); ctx.moveTo(gx, gy);
+      ctx.quadraticCurveTo(gx + len / 2, gy + (rf() - 0.5) * 3, gx + len, gy);
+      ctx.stroke();
+    }
+
+    /* --- moonlight: the shaft through the window, pooling on the boards --- */
+    var shaft = ctx.createLinearGradient(0, WY + WH, 0, H);
+    shaft.addColorStop(0, "rgba(158,192,228,0.16)");
+    shaft.addColorStop(0.7, "rgba(158,192,228,0.10)");
+    shaft.addColorStop(1, "rgba(158,192,228,0.03)");
+    ctx.fillStyle = shaft;
+    ctx.beginPath();
+    ctx.moveTo(WX + 6, WY + WH - 2); ctx.lineTo(WX + WW - 6, WY + WH - 2);
+    ctx.lineTo(WX + WW + 120, H); ctx.lineTo(WX - 60, H);
+    ctx.closePath(); ctx.fill();
+    glow(ctx, 505, 262, 130, "168,200,232", 0.13);   // the pale pool
+    glow(ctx, 505, 258, 60, "190,215,240", 0.10);
+
+    /* --- the heavy oak door, locked from the outside --- */
+    var DX = 588, DW = 144, DTOP = 48;
+    ctx.fillStyle = "#0a080f"; ctx.fillRect(DX - 14, DTOP - 14, DW + 28, FLOOR - DTOP + 14);
+    ctx.beginPath(); ctx.arc(DX + DW / 2, DTOP + 2, DW / 2 + 10, Math.PI, 0); ctx.fill();
+    var dg = ctx.createLinearGradient(DX, 0, DX + DW, 0);
+    dg.addColorStop(0, "#3f2a16"); dg.addColorStop(0.45, "#6f4c28");
+    dg.addColorStop(0.75, "#4a3018"); dg.addColorStop(1, "#2c1c0e");
+    ctx.fillStyle = dg;
+    ctx.beginPath();
+    ctx.moveTo(DX, FLOOR); ctx.lineTo(DX, DTOP + 12);
+    ctx.quadraticCurveTo(DX + DW / 2, DTOP - 26, DX + DW, DTOP + 12);
+    ctx.lineTo(DX + DW, FLOOR); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 2;    // plank grooves
+    for (i = 1; i < 6; i++) {
+      var gx2 = DX + i * (DW / 6);
+      ctx.beginPath(); ctx.moveTo(gx2, DTOP + 18); ctx.lineTo(gx2, FLOOR); ctx.stroke();
+    }
+    ctx.fillStyle = "#191920";                                 // iron studs
+    for (p = 0; p < 4; p++) {
+      var sy2 = DTOP + 40 + p * 44;
+      if (sy2 > FLOOR - 10) sy2 = FLOOR - 14;
+      ctx.fillRect(DX + 10, sy2, 5, 5); ctx.fillRect(DX + DW - 15, sy2, 5, 5);
+    }
+    ctx.fillRect(DX + DW / 2 - 3, DTOP + 40, 6, 5);
+    // the big iron ring
+    ctx.fillStyle = "#191920"; ctx.fillRect(DX + DW - 52, 128, 18, 11);
+    ctx.strokeStyle = "#101014"; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(DX + DW - 44, 150, 15, 0, 6.3); ctx.stroke();
+    ctx.strokeStyle = "rgba(160,165,180,0.5)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(DX + DW - 46, 148, 15, Math.PI * 0.8, Math.PI * 1.6); ctx.stroke();
+    // stone threshold
+    var th = ctx.createLinearGradient(0, FLOOR, 0, FLOOR + 12);
+    th.addColorStop(0, "#5a5f70"); th.addColorStop(1, "#242834");
+    ctx.fillStyle = th; ctx.fillRect(DX - 18, FLOOR, DW + 36, 12);
+
+    /* --- the bakelite lightswitch beside the door --- */
+    ctx.fillStyle = "#171310"; ctx.fillRect(754, 118, 26, 24);
+    ctx.fillStyle = "#3c332a"; ctx.fillRect(755, 119, 24, 22);
+    ctx.fillStyle = "#cfc8ae"; ctx.fillRect(764, 126, 6, 9);
+    ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(764, 133, 6, 2);
+
+    /* --- the tall wardrobe in the corner --- */
+    var KX = 792, KW = 118, KTOP = 104;
+    ctx.fillStyle = "#080610"; ctx.fillRect(KX - 8, KTOP - 8, KW + 16, FLOOR - KTOP + 8);
+    var kgr = ctx.createLinearGradient(KX, 0, KX + KW, 0);
+    kgr.addColorStop(0, "#2e2314"); kgr.addColorStop(0.4, "#57422a");
+    kgr.addColorStop(0.75, "#3c2d1b"); kgr.addColorStop(1, "#241a0f");
+    ctx.fillStyle = kgr;
+    ctx.beginPath();
+    ctx.moveTo(KX, FLOOR); ctx.lineTo(KX, KTOP + 26);
+    ctx.quadraticCurveTo(KX + KW / 2, KTOP - 34, KX + KW, KTOP + 26);
+    ctx.lineTo(KX + KW, FLOOR); ctx.closePath(); ctx.fill();
+    if (!wardrobeOpen) {
+      ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 2;  // the meeting line
+      ctx.beginPath(); ctx.moveTo(KX + KW / 2, KTOP + 22); ctx.lineTo(KX + KW / 2, FLOOR - 8); ctx.stroke();
+      ctx.strokeStyle = "rgba(190,150,95,0.18)";                // moulded panels
+      ctx.strokeRect(KX + 12, KTOP + 44, 42, 92);
+      ctx.strokeRect(KX + KW / 2 + 8, KTOP + 44, 42, 92);
+      [KX + KW / 2 - 12, KX + KW / 2 + 12].forEach(function (cx2) {  // ring pulls
+        ctx.strokeStyle = "#14100c"; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(cx2, 176, 7, 0, 6.3); ctx.stroke();
+        ctx.strokeStyle = "rgba(200,170,110,0.4)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx2 - 1, 175, 7, Math.PI * 0.9, Math.PI * 1.7); ctx.stroke();
+      });
+    } else {
+      ctx.fillStyle = "#04030a";                       // the dark interior
+      ctx.fillRect(KX + 10, KTOP + 22, KW - 20, FLOOR - KTOP - 22);
+      ctx.strokeStyle = "rgba(120,90,50,0.5)"; ctx.lineWidth = 2;   // the rail
+      ctx.beginPath(); ctx.moveTo(KX + 16, KTOP + 38); ctx.lineTo(KX + KW - 16, KTOP + 38); ctx.stroke();
+      if (shirt) {                                     // Ivan's pale shirt
+        var sg = ctx.createLinearGradient(0, KTOP + 40, 0, KTOP + 108);
+        sg.addColorStop(0, "#e4ddc9"); sg.addColorStop(1, "#9a927e");
+        ctx.fillStyle = sg;
+        ctx.beginPath();
+        ctx.moveTo(KX + 34, KTOP + 44); ctx.lineTo(KX + 52, KTOP + 40);
+        ctx.lineTo(KX + 62, KTOP + 52); ctx.lineTo(KX + 56, KTOP + 108);
+        ctx.lineTo(KX + 38, KTOP + 108); ctx.lineTo(KX + 30, KTOP + 58);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(60,55,40,0.4)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(KX + 46, KTOP + 54); ctx.lineTo(KX + 48, KTOP + 102); ctx.stroke();
+      }
+      function swung(x0, x1, dir) {                    // a door swung towards us
+        var gd = ctx.createLinearGradient(Math.min(x0, x1), 0, Math.max(x0, x1), 0);
+        gd.addColorStop(0, "#1c130a"); gd.addColorStop(0.6, "#4a3720"); gd.addColorStop(1, "#241a0f");
+        ctx.fillStyle = gd;
+        ctx.beginPath();
+        ctx.moveTo(x0, KTOP + 22); ctx.lineTo(x0, FLOOR);
+        ctx.lineTo(x1, FLOOR + 4); ctx.lineTo(x1, KTOP + 44);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.6)"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x0, KTOP + 22); ctx.lineTo(x0, FLOOR); ctx.stroke();
+        ctx.fillStyle = "#191920";                  // the knob on the free edge
+        ctx.fillRect(x1 - (dir > 0 ? 12 : -4), 172, 8, 8);
+      }
+      swung(KX + 10, KX - 24, -1);
+      swung(KX + KW - 10, KX + KW + 24, 1);
+    }
+
+    /* --- the four-poster bed --- */
+    var BX = 48, BW = 312, BEDBASE = 240;
+    // shadow under the bed
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.beginPath(); ctx.ellipse(BX + BW / 2, BEDBASE + 6, BW / 2 + 12, 14, 0, 0, 6.3); ctx.fill();
+    // faded velvet hangings, seen between the posts
+    function curtain(cx3, cw) {
+      var cg = ctx.createLinearGradient(cx3, 0, cx3 + cw, 0);
+      cg.addColorStop(0, "#3a1630"); cg.addColorStop(0.35, "#6b2f45");
+      cg.addColorStop(0.6, "#4a1c36"); cg.addColorStop(1, "#2e1128");
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.moveTo(cx3, 120); ctx.lineTo(cx3 + cw, 120);
+      ctx.lineTo(cx3 + cw - 4, 226); ctx.lineTo(cx3 + 4, 226);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 2;
+      for (var f = 1; f < 4; f++) {
+        ctx.beginPath(); ctx.moveTo(cx3 + f * cw / 4, 122);
+        ctx.quadraticCurveTo(cx3 + f * cw / 4 - 3, 180, cx3 + f * cw / 4 + 2, 224);
+        ctx.stroke();
+      }
+    }
+    curtain(74, 52); curtain(288, 52);
+    // the canopy board
+    var cb = ctx.createLinearGradient(0, 92, 0, 122);
+    cb.addColorStop(0, "#7a4530"); cb.addColorStop(0.6, "#5a2f20"); cb.addColorStop(1, "#38180f");
+    ctx.fillStyle = cb; ctx.fillRect(BX, 92, BW, 30);
+    ctx.fillStyle = "rgba(255,200,150,0.18)"; ctx.fillRect(BX, 92, BW, 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.4)"; ctx.lineWidth = 1.5;
+    for (x = BX + 26; x < BX + BW; x += 26) {
+      ctx.beginPath(); ctx.moveTo(x, 94); ctx.lineTo(x, 120); ctx.stroke();
+    }
+    // bedding
+    if (!bedSearched) {
+      var mt = ctx.createLinearGradient(0, 166, 0, 194);
+      mt.addColorStop(0, "#d9cfb2"); mt.addColorStop(1, "#a89a78");
+      ctx.fillStyle = mt; ctx.fillRect(84, 166, 242, 28);       // the mattress
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(84, 190, 242, 4);
+      var pw = ctx.createLinearGradient(0, 156, 0, 178);        // the pillow
+      pw.addColorStop(0, "#ece2ca"); pw.addColorStop(1, "#c4b896");
+      ctx.fillStyle = pw;
+      ctx.beginPath(); ctx.ellipse(136, 168, 38, 11, 0, 0, 6.3); ctx.fill();
+      // the blanket, smooth
+      var bl = ctx.createLinearGradient(0, 186, 0, 238);
+      bl.addColorStop(0, "#8d4a55"); bl.addColorStop(0.55, "#4a1f28"); bl.addColorStop(1, "#2c1218");
+      ctx.fillStyle = bl; ctx.fillRect(76, 186, 262, 52);
+      ctx.fillStyle = "rgba(255,190,190,0.12)"; ctx.fillRect(76, 186, 262, 2);
+      ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 2;
+      [204, 218, 230].forEach(function (fy) {
+        ctx.beginPath(); ctx.moveTo(80, fy);
+        ctx.quadraticCurveTo(207, fy + 5, 334, fy); ctx.stroke();
+      });
+    } else {
+      ctx.fillStyle = "#0a0705"; ctx.fillRect(86, 224, 210, 20);  // the dark gap beneath
+      var mt2 = ctx.createLinearGradient(0, 164, 0, 196);         // mattress, askew
+      mt2.addColorStop(0, "#e2d8bc"); mt2.addColorStop(1, "#a89a78");
+      ctx.fillStyle = mt2;
+      ctx.beginPath();
+      ctx.moveTo(90, 168); ctx.lineTo(322, 158);
+      ctx.lineTo(326, 190); ctx.lineTo(86, 200); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(90,80,60,0.5)"; ctx.lineWidth = 1;  // rumpled sheet
+      for (i = 0; i < 6; i++) {
+        ctx.beginPath(); ctx.moveTo(96 + i * 38, 166 + (i % 2) * 4);
+        ctx.quadraticCurveTo(112 + i * 38, 178 + (i % 3) * 4, 100 + i * 38, 192);
+        ctx.stroke();
+      }
+      ctx.save();                                                  // pillow, toppled
+      ctx.translate(140, 172); ctx.rotate(-0.22);
+      var pw2 = ctx.createLinearGradient(0, -12, 0, 12);
+      pw2.addColorStop(0, "#ece2ca"); pw2.addColorStop(1, "#bfb391");
+      ctx.fillStyle = pw2;
+      ctx.beginPath(); ctx.ellipse(0, 0, 36, 11, 0, 0, 6.3); ctx.fill();
+      ctx.restore();
+      // the blanket thrown back over the foot of the bed
+      var bl2 = ctx.createLinearGradient(0, 186, 0, 244);
+      bl2.addColorStop(0, "#a06a72"); bl2.addColorStop(0.5, "#5a2430"); bl2.addColorStop(1, "#2c1218");
+      ctx.fillStyle = bl2;
+      ctx.beginPath();
+      ctx.moveTo(198, 186); ctx.lineTo(338, 186); ctx.lineTo(342, 240);
+      ctx.quadraticCurveTo(270, 248, 198, 236); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#b5848d"; ctx.fillRect(198, 186, 20, 50);   // the rolled cuff
+      ctx.strokeStyle = "rgba(40,10,16,0.6)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(208, 188); ctx.lineTo(208, 236); ctx.stroke();
+    }
+    // the posts, turned wood, in front of everything
+    [60, 326].forEach(function (pX) {
+      var pg = ctx.createLinearGradient(pX, 0, pX + 22, 0);
+      pg.addColorStop(0, "#241505"); pg.addColorStop(0.45, "#5c3a1e"); pg.addColorStop(1, "#1c1006");
+      ctx.fillStyle = pg; ctx.fillRect(pX, 120, 22, 126);
+      ctx.fillStyle = pg;
+      [140, 190].forEach(function (ky) {                   // turned knobs
+        ctx.beginPath(); ctx.ellipse(pX + 11, ky, 15, 6, 0, 0, 6.3); ctx.fill();
+      });
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(pX + 11, 112, 12, 0, 6.3); ctx.fill();  // finial
+      ctx.fillStyle = "rgba(255,210,160,0.14)";
+      ctx.fillRect(pX + 4, 122, 3, 120);
+    });
+
+    /* --- the rug, and the hatch beneath it --- */
+    if (!rugMoved) {
+      var rug = ctx.createLinearGradient(0, 238, 0, 290);
+      rug.addColorStop(0, "#7c3040"); rug.addColorStop(1, "#40141f");
+      ctx.fillStyle = rug;
+      ctx.beginPath();
+      ctx.moveTo(420, 238); ctx.lineTo(670, 238);
+      ctx.lineTo(688, 290); ctx.lineTo(402, 290);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(20,8,12,0.65)"; ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(220,170,120,0.25)"; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(436, 246); ctx.lineTo(654, 246); ctx.lineTo(668, 282); ctx.lineTo(422, 282);
+      ctx.closePath(); ctx.stroke();
+      ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1;
+      for (i = 0; i < 5; i++) {
+        ctx.beginPath(); ctx.moveTo(470 + i * 34, 250);
+        ctx.lineTo(452 + i * 34, 278); ctx.stroke();
+      }
+    } else {
+      // rolled back against the wall, the boards bare beneath
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath(); ctx.ellipse(528, 222, 82, 8, 0, 0, 6.3); ctx.fill();
+      var roll = ctx.createLinearGradient(0, 194, 0, 220);
+      roll.addColorStop(0, "#8a3a4c"); roll.addColorStop(0.6, "#5a2030"); roll.addColorStop(1, "#2e0f18");
+      ctx.fillStyle = roll; ctx.fillRect(452, 194, 128, 24);
+      ctx.beginPath(); ctx.arc(580, 206, 12, 0, 6.3); ctx.fill();
+      ctx.strokeStyle = "rgba(20,8,12,0.7)"; ctx.lineWidth = 1.5;   // the spiral end
+      ctx.beginPath(); ctx.arc(580, 206, 12, 0, 6.3); ctx.stroke();
+      ctx.beginPath(); ctx.arc(580, 206, 8, 0.4, 6.0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(580, 206, 4, 0, 6.3); ctx.stroke();
+    }
+    if (hatchOpen) {
+      var hX = 536, hY = 246, hW = 118, hH = 44;
+      var hole = ctx.createLinearGradient(0, hY, 0, hY + hH);
+      hole.addColorStop(0, "#000000"); hole.addColorStop(1, "#0a0805");
+      ctx.fillStyle = hole; ctx.fillRect(hX, hY, hW, hH);
+      ctx.strokeStyle = "rgba(120,90,50,0.6)"; ctx.lineWidth = 3;
+      ctx.strokeRect(hX, hY, hW, hH);
+      ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(hX - 3, hY + hH, hW + 6, 4);
+      // the raised trapdoor leaning beside its opening
+      var td = ctx.createLinearGradient(hX, hY - 30, hX + hW, hY);
+      td.addColorStop(0, "#5a4326"); td.addColorStop(1, "#33220f");
+      ctx.fillStyle = td;
+      ctx.beginPath();
+      ctx.moveTo(hX + hW + 4, hY + hH); ctx.lineTo(hX + hW + 42, hY + hH - 6);
+      ctx.lineTo(hX + hW + 42, hY - 28); ctx.lineTo(hX + hW + 4, hY - 22);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.45)"; ctx.lineWidth = 1.5;    // its planks
+      for (i = 1; i < 4; i++) {
+        ctx.beginPath(); ctx.moveTo(hX + hW + 4, hY + hH - i * 16);
+        ctx.lineTo(hX + hW + 42, hY + hH - 6 - i * 16); ctx.stroke();
+      }
+    }
+
+    /* --- candlelight, when your candle burns --- */
+    if (lit) {
+      glow(ctx, 300, 250, 300, "255,170,80", 0.16);
+      glow(ctx, 250, 200, 160, "255,190,110", 0.12);
+      var warm = ctx.createLinearGradient(0, 0, 430, 0);
+      warm.addColorStop(0, "rgba(255,170,80,0.10)"); warm.addColorStop(1, "rgba(255,170,80,0)");
+      ctx.fillStyle = warm; ctx.fillRect(0, 0, 430, H);
+    }
+
+    /* --- the vignette: deep shadows at the edges --- */
+    var vg = ctx.createRadialGradient(W / 2, H / 2 - 20, 130, W / 2, H / 2, 650);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
   };
 })(typeof window !== "undefined" ? window : globalThis);
 
@@ -2136,7 +2661,15 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   var engine = new S.Engine({
     out: print, clear: clear, status: status, theme: theme, flash: flash,
     sound: function (n) { S.Sound.play(n); },
-    pic: function (ops, check, anim) { gfx.draw(ops, check, anim); },
+    pic: function (ops, check, anim) {
+      // A room with a registered hi-res painter bypasses the fat-pixel ops.
+      if (S.GfxHD && S.GfxHD.has(engine.state && engine.state.room)) {
+        S.GfxHD.draw(gfx.canvas, engine, anim);
+        return;
+      }
+      gfx.canvas.classList.remove("hd");
+      gfx.draw(ops, check, anim);
+    },
     inventory: showInventory,
     crt: function () { $("screen").classList.toggle("crt"); },
     copy: function (t) { try { navigator.clipboard.writeText(t); return true; } catch (e) { return false; } },
