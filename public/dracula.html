@@ -133,6 +133,81 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 }
 .overlay.hidden { display: none; }
 #boot { font-family: var(--pixel); font-size: clamp(8px, 1.5vw, 12px); line-height: 1.8; color: var(--fg); align-items: flex-start; justify-content: flex-start; white-space: pre-wrap; flex-direction: column; }
+
+/* ---------- arrival scene (start of a new game) ---------- */
+#arrival {
+  flex-direction: column; gap: 14px; overflow-y: auto;
+  background: linear-gradient(180deg, #070a20 0%, #10163a 55%, #0a0d24 100%);
+  cursor: pointer;
+  opacity: 0; transition: opacity .4s ease;
+}
+#arrival.shown { opacity: 1; }
+.arrival-inner { width: min(100%, 640px); display: flex; flex-direction: column; gap: 14px; }
+.arrival-art {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; flex: none;
+  overflow: hidden; background: #070a20;
+  border: 3px solid var(--bar);
+}
+.arrival-svg { display: block; width: 100%; height: 100%; }
+/* CSS-only fallback panel, shown instead of the SVG below 640px (viewport width only, no JS) */
+.arrival-panel {
+  display: none; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 130% 110% at 50% 40%, transparent 52%, rgba(3, 5, 16, .72) 100%),
+    radial-gradient(ellipse 60% 45% at 12% 88%, rgba(3, 5, 16, .6), transparent 60%),
+    radial-gradient(ellipse 55% 40% at 88% 14%, rgba(3, 5, 16, .55), transparent 55%),
+    linear-gradient(180deg, transparent 0%, transparent 60%, rgba(22, 28, 62, .95) 61%, rgba(22, 28, 62, .95) 74%, #0c1128 75%, #070a1c 100%),
+    linear-gradient(180deg, #070a20 0%, #10163a 45%, #232a58 80%, #3d3266 100%);
+}
+.arrival-panel::before { /* film grain */
+  content: ""; position: absolute; inset: -40px;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .035) 0 1px, transparent 1px 2px),
+    repeating-linear-gradient(90deg, rgba(10, 12, 30, .05) 0 1px, transparent 1px 3px);
+  animation: arrival-grain 1.4s steps(5) infinite;
+}
+.arrival-panel::after { /* soft flicker */
+  content: ""; position: absolute; inset: 0; background: #dfe4ff;
+  opacity: .03; animation: arrival-flicker 2.4s ease-in-out infinite;
+}
+@keyframes arrival-grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-12px, 8px); }
+  40% { transform: translate(8px, -10px); }
+  60% { transform: translate(-6px, -14px); }
+  80% { transform: translate(10px, 6px); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes arrival-flicker {
+  0%, 100% { opacity: .02; }
+  38% { opacity: .05; }
+  55% { opacity: .015; }
+  72% { opacity: .045; }
+}
+.arrival-prose {
+  margin: 0; font-family: var(--read);
+  color: var(--text); line-height: 1.45;
+}
+.arrival-hintwrap { margin: 0; animation: hint-in .4s ease both; }
+.arrival-hint {
+  display: block; text-align: center;
+  font-family: var(--pixel); font-size: clamp(8px, 1.3vw, 11px); line-height: 1.6;
+  letter-spacing: .02em; color: var(--text);
+  animation: hint-pulse 2.4s ease-in-out infinite;
+}
+.vh { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@keyframes hint-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hint-pulse { 0%, 100% { opacity: .4; } 50% { opacity: .7; } }
+@media (max-width: 639.98px) {
+  .arrival-svg { display: none; }
+  .arrival-panel { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #arrival { transition: none; opacity: 1; }
+  .arrival-hintwrap { animation: none; }
+  .arrival-hint { animation: none; opacity: .55; }
+  .arrival-panel::before, .arrival-panel::after { animation: none; }
+}
 .box {
   width: min(100%, 520px); max-height: 100%; overflow-y: auto;
   border: 3px solid var(--bar); padding: 16px;
@@ -202,6 +277,63 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 
     <!-- Boot screen -->
     <div id="boot" class="overlay"></div>
+
+    <!-- Arrival scene: shown when a new game starts, before waking in the Guest Bedroom -->
+    <section id="arrival" class="overlay hidden" aria-label="The road to the castle">
+      <div class="arrival-inner">
+        <div class="arrival-art">
+          <svg class="arrival-svg" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Night mountains and the distant silhouette of Castle Dracula under three stars">
+            <defs>
+              <linearGradient id="ar-sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#070a20"/>
+                <stop offset="0.45" stop-color="#10163a"/>
+                <stop offset="0.8" stop-color="#232a58"/>
+                <stop offset="1" stop-color="#3d3266"/>
+              </linearGradient>
+              <radialGradient id="ar-glow" cx="0.5" cy="0.5" r="0.5">
+                <stop offset="0" stop-color="#565d9e" stop-opacity="0.5"/>
+                <stop offset="1" stop-color="#565d9e" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect x="0" y="0" width="1280" height="720" fill="url(#ar-sky)"/>
+            <ellipse cx="790" cy="400" rx="300" ry="200" fill="url(#ar-glow)"/>
+            <circle cx="215" cy="112" r="2.6" fill="#e8ecff" opacity="0.95"/>
+            <polygon fill="#dfe9ff" opacity="0.9" points="860,82 863,92 873,92 865,98 868,108 860,102 852,108 855,98 847,92 857,92"/>
+            <circle cx="1128" cy="168" r="2" fill="#cdd6f7" opacity="0.8"/>
+            <polygon fill="#232a5e" points="0,470 140,402 320,452 480,382 640,442 800,372 960,432 1120,392 1280,452 1280,720 0,720"/>
+            <polygon fill="#161c3e" points="0,560 120,502 300,542 430,472 560,522 700,442 860,512 1000,472 1140,532 1280,492 1280,720 0,720"/>
+            <g fill="#070a1c">
+              <polygon points="697,392 739,392 718,336"/>
+              <rect x="702" y="392" width="32" height="120"/>
+              <polygon points="766,300 804,300 785,252"/>
+              <rect x="772" y="300" width="26" height="70"/>
+              <rect x="740" y="366" width="92" height="150"/>
+              <rect x="726" y="450" width="120" height="66"/>
+              <polygon points="833,384 877,384 855,328"/>
+              <rect x="838" y="384" width="34" height="132"/>
+              <rect x="748" y="356" width="10" height="10"/>
+              <rect x="768" y="356" width="10" height="10"/>
+              <rect x="788" y="356" width="10" height="10"/>
+              <rect x="808" y="356" width="10" height="10"/>
+            </g>
+            <g fill="#ffb45e">
+              <rect x="781" y="316" width="6" height="11" opacity="0.95"/>
+              <rect x="756" y="404" width="7" height="13" opacity="0.85"/>
+              <rect x="806" y="418" width="7" height="13" opacity="0.7"/>
+              <rect x="712" y="432" width="5" height="10" opacity="0.8"/>
+              <rect x="849" y="424" width="5" height="10" opacity="0.75"/>
+              <rect x="738" y="472" width="6" height="10" opacity="0.5"/>
+              <rect x="826" y="472" width="6" height="10" opacity="0.45"/>
+            </g>
+            <polygon fill="#0c1128" points="0,642 180,600 380,632 560,590 760,636 940,600 1120,642 1280,612 1280,720 0,720"/>
+            <ellipse cx="640" cy="706" rx="720" ry="52" fill="#1a2150" opacity="0.4"/>
+          </svg>
+          <div class="arrival-panel" aria-hidden="true"></div>
+        </div>
+        <p class="arrival-prose">The rain lashed against the carriage window as the horses took the last bend of the mountain road. Above the pass, cut black against the stars, the towers of Castle Dracula waited. In your pocket, the deed you signed in London felt heavier than the case that held it. The driver would go no further. The rest of the way, you walk alone.</p>
+        <p class="arrival-hintwrap"><span class="arrival-hint" aria-hidden="true">Click anywhere to continue</span><span class="vh">Click anywhere to continue</span></p>
+      </div>
+    </section>
 
     <!-- Inventory -->
     <div id="invpanel" class="overlay hidden" role="dialog" aria-label="Inventory">
@@ -2155,12 +2287,13 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     S.Sound.unlock();
     flush();
     if (mode === "boot") return title();
+    if (mode === "arrival") return continueArrival();
     if (mode === "title") {
-      mode = "play";
       var w = v.trim();
       var lc = w.match(/^(load|restore)\s+(\S{20,})$/i);
-      if (lc) { engine.loadCode(lc[2]); if (!engine.state) engine.newGame(); return; }
-      if (/^(new|new game|n)$/i.test(w) || !engine.hasSave()) return engine.newGame();
+      if (lc) { mode = "play"; engine.loadCode(lc[2]); if (!engine.state) engine.newGame(); return; }
+      if (/^(new|new game|n)$/i.test(w) || !engine.hasSave()) return showArrival();
+      mode = "play";
       engine.restore();                      // don't start a new game first - it would overwrite the save
       if (!engine.state) engine.newGame();
       return;
@@ -2169,6 +2302,26 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     history.push(v); hpos = history.length;
     print("> " + v.toUpperCase(), "echo");
     engine.command(v);
+  }
+
+  /* ---------- arrival scene: the road to the castle ---------- */
+  // Shown instead of an instant newGame() so the opening art and prose land
+  // before the player wakes in the Guest Bedroom. Restoring a save skips it.
+  function showArrival() {
+    mode = "arrival";
+    var el = $("arrival");
+    el.classList.remove("hidden");
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { el.classList.add("shown"); });
+    });
+  }
+  function continueArrival() {
+    if (mode !== "arrival") return;
+    mode = "play";
+    var el = $("arrival");
+    el.classList.remove("shown");
+    el.classList.add("hidden");
+    engine.newGame();
   }
 
   /* ---------- input ---------- */
@@ -2181,6 +2334,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     if (e.target && e.target.id === "modtext") { if (e.key === "Escape") closeOverlays(); return; }
     if (overlayOpen()) { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); closeOverlays(); } return; }
     if (mode === "boot") { e.preventDefault(); return title(); }
+    if (mode === "arrival") { e.preventDefault(); return continueArrival(); }
     if (e.key === "Tab") { e.preventDefault(); return submit("i"); }
     if (document.activeElement !== cmd) cmd.focus();
     if (e.key === "Enter") { e.preventDefault(); var v = cmd.value; cmd.value = ""; sync(); submit(v); dismissKeyboard(); }
@@ -2190,6 +2344,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   $("screen").addEventListener("click", function (e) {
     S.Sound.unlock(); // audio must be unlocked inside a user gesture
     if (mode === "boot") return title();
+    if (mode === "arrival") return continueArrival(); // "click anywhere to continue"
     if (e.target.closest("#mods .box")) return;
     if (overlayOpen()) return closeOverlays();
     if (!e.target.closest("button")) cmd.focus();
