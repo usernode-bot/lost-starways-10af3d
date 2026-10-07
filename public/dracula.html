@@ -117,14 +117,22 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 }
 
 #keys { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-#keys button, .box button {
+/* MORE prompt: sticky at the end of the text inside #out, so it adds no height
+   to the screen's flex column and never pushes the picture or keys off screen. */
+#morebar {
+  position: sticky; bottom: 0; display: flex; justify-content: flex-end; padding-top: 6px;
+}
+#morebar.hidden { display: none; }
+#keys button, .box button, #morebar button {
   font-family: var(--pixel); font-size: clamp(9px, 1.3vw, 11px); cursor: pointer;
   background: color-mix(in srgb, var(--key) 70%, var(--bg)); color: #e6e2d6; border: 0;
   border-bottom: 3px solid #1a1500; border-right: 3px solid #1a1500;
   padding: 8px 10px; min-width: 3em;
 }
-#keys button:active, .box button:active { transform: translate(1px, 1px); border-width: 0 2px 2px 0; }
-#keys button:focus-visible, .box button:focus-visible { outline: 2px solid var(--white); }
+#keys button:active, .box button:active, #morebar button:active { transform: translate(1px, 1px); border-width: 0 2px 2px 0; }
+#keys button:focus-visible, .box button:focus-visible, #morebar button:focus-visible { outline: 2px solid var(--white); }
+#morebar button { animation: blinkmore 1s steps(1) infinite; }
+@keyframes blinkmore { 50% { opacity: .35; } }
 
 .overlay {
   position: absolute; inset: 0; z-index: 5;
@@ -207,6 +215,7 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
   .arrival-hintwrap { animation: none; }
   .arrival-hint { animation: none; opacity: .55; }
   .arrival-panel::before, .arrival-panel::after { animation: none; }
+  #morebar button { animation: none; }
 }
 .box {
   width: min(100%, 520px); max-height: 100%; overflow-y: auto;
@@ -2179,10 +2188,15 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
 
   var out = $("out"), cmd = $("cmd"), typed = $("typed");
   var gfx = new S.Gfx($("pic"));
+  var morebar = document.createElement("div");
+  morebar.id = "morebar";
+  morebar.className = "hidden";
+  morebar.innerHTML = "<button id=\"more\" aria-label=\"Show more text\">MORE</button>";
   var mode = "boot", history = [], hpos = 0, queue = [], typing = null;
+  var pageTop = null, waitingMore = false;
 
-  /* ---------- typewriter output ---------- */
-  function print(text, cls) { queue.push({ t: text, c: cls }); if (!typing) next(); }
+  /* ---------- typewriter output (paged: a full screen waits for MORE) ---------- */
+  function print(text, cls) { queue.push({ t: text, c: cls }); if (!typing && !waitingMore) next(); }
   function line(q) {
     var d = document.createElement("div");
     d.className = "ln " + (q.c || "");
@@ -2190,15 +2204,87 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     while (out.childNodes.length > 400) out.removeChild(out.firstChild);
     return d;
   }
+  function lineHeightPx() {
+    var v = parseFloat(getComputedStyle(out).lineHeight);
+    return isNaN(v) ? 24 : v;
+  }
+  // Would adding a line of height h push the current page out of view?
+  function pageOverflows(h, probe) {
+    var vh = out.clientHeight;
+    if (!pageTop || vh <= 0) return false;
+    var pTop = pageTop.getBoundingClientRect().top;
+    if (pTop < out.getBoundingClientRect().top - 1) return true;   // page top already scrolled away
+    var last = probe ? probe.previousElementSibling : out.lastElementChild;
+    if (!last) return false;
+    return (last.getBoundingClientRect().bottom - pTop) + h > vh - 4;
+  }
+  // Split a single line taller than the screen at a word boundary: [fits, rest]
+  function splitTall(t, fit, probe) {
+    var full = probe.offsetHeight;
+    if (full <= fit || fit <= 0) return null;
+    var cut = Math.max(1, Math.floor(t.length * (fit / full)));
+    var sp = t.lastIndexOf(" ", cut);
+    if (sp < cut * 0.5) sp = t.indexOf(" ", cut);
+    if (sp < 1 || sp >= t.length - 1) return [t.slice(0, cut), t.slice(cut)];
+    return [t.slice(0, sp), t.slice(sp + 1)];
+  }
+  // Append the next queued line if it fits on the current page. Returns
+  // { d, q } for a text line, { blank } for an empty one, or null when the
+  // screen is full (the line goes back to the queue and MORE is shown).
+  function takeLine() {
+    var q = queue.shift(), d = line(q), first = false;
+    if (!pageTop) { pageTop = d; first = true; }
+    function park() { out.removeChild(d); queue.unshift(q); showMore(); return null; }
+    if (!q.t) {
+      d.textContent = " ";
+      if (!first && pageOverflows(lineHeightPx(), d)) return park();
+      return { blank: true };
+    }
+    d.textContent = q.t;
+    var vh = out.clientHeight;
+    if (d.offsetHeight > vh && vh > 0) {
+      var parts = splitTall(q.t, vh, d);
+      if (parts) { q.t = parts[0]; d.textContent = parts[0]; queue.unshift({ t: parts[1], c: q.c }); }
+    }
+    if (!first && pageOverflows(d.offsetHeight, d)) return park();
+    return { d: d, q: q };
+  }
+  // Scroll the page top back to the top of the view: the sticky MORE bar can
+  // push the content past the viewport, and a scroll-to-bottom would hide the
+  // first line of the page - the one thing paging must not do.
+  function snapPage() {
+    if (!pageTop) return;
+    var ot = out.getBoundingClientRect().top, pt = pageTop.getBoundingClientRect().top;
+    out.scrollTop += pt - ot;
+  }
+  function showMore() {
+    waitingMore = true;
+    typing = null;
+    out.appendChild(morebar);           // sticky at the end of the text
+    morebar.classList.remove("hidden");
+    snapPage();
+  }
+  function advanceMore() {
+    if (!waitingMore) return;
+    waitingMore = false;
+    morebar.classList.add("hidden");
+    morebar.remove();
+    pageTop = null;
+    next();
+  }
   function next() {
+    if (waitingMore) return;
+    // Keep pageTop when the queue drains: a later print joins the current
+    // page, so a short line is never orphaned above the fold unread.
     if (!queue.length) { typing = null; return; }
-    var q = queue.shift(), d = line(q);
-    if (!q.t) { d.textContent = " "; return next(); }
-    typing = { d: d, t: q.t, i: 0 };
-    var me = typing;
+    var r = takeLine();
+    if (!r) return;
+    if (r.blank) return next();
+    typing = { d: r.d, t: r.q.t, i: 0 };
+    var me = typing, d = r.d;
     (function tick() {
       if (typing !== me) return;
-      me.i += 3;
+      me.i += DEMO_MORE ? 30 : 3;             // demo skips the animation, not the paging
       d.textContent = me.t.slice(0, me.i);
       out.scrollTop = out.scrollHeight;
       if (me.i >= me.t.length) next(); else requestAnimationFrame(tick);
@@ -2206,10 +2292,20 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   }
   function flush() {
     if (typing) { typing.d.textContent = typing.t; typing = null; }
-    while (queue.length) { var q = queue.shift(); line(q).textContent = q.t || " "; }
-    out.scrollTop = out.scrollHeight;
+    while (queue.length && !waitingMore) {
+      var r = takeLine();
+      if (!r) break;                          // screen full: the rest waits for MORE
+      r.d.textContent = r.q ? r.q.t : "\u00a0";
+    }
+    if (waitingMore) snapPage(); else out.scrollTop = out.scrollHeight;
   }
-  function clear() { queue = []; typing = null; out.textContent = ""; }
+  function clear() {
+    queue = []; typing = null;
+    pageTop = null; waitingMore = false;
+    morebar.classList.add("hidden");
+    morebar.remove();
+    out.textContent = "";
+  }
 
   /* ---------- theme & effects ---------- */
   function theme(c) {
@@ -2298,6 +2394,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
 
   function submit(v) {
     S.Sound.unlock();
+    if (waitingMore) return advanceMore();
     flush();
     if (mode === "boot") return title();
     if (mode === "arrival") return continueArrival();
@@ -2348,6 +2445,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     if (overlayOpen()) { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); closeOverlays(); } return; }
     if (mode === "boot") { e.preventDefault(); return title(); }
     if (mode === "arrival") { e.preventDefault(); return continueArrival(); }
+    if (waitingMore) { if (!e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); advanceMore(); } return; }
     if (e.key === "Tab") { e.preventDefault(); return submit("i"); }
     if (document.activeElement !== cmd) cmd.focus();
     if (e.key === "Enter") { e.preventDefault(); var v = cmd.value; cmd.value = ""; sync(); submit(v); dismissKeyboard(); }
@@ -2358,6 +2456,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     S.Sound.unlock(); // audio must be unlocked inside a user gesture
     if (mode === "boot") return title();
     if (mode === "arrival") return continueArrival(); // "click anywhere to continue"
+    if (waitingMore && !overlayOpen()) return advanceMore();
     if (e.target.closest("#mods .box")) return;
     if (overlayOpen()) return closeOverlays();
     if (!e.target.closest("button")) cmd.focus();
@@ -2372,6 +2471,15 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   });
 
   /* ---------- boot + title ---------- */
+  // Deterministic demo for checks and reviewers: /dracula?demo=more starts a
+  // game and floods the screen with narration so the MORE paging shows at once.
+  var DEMO_MORE = false;
+  try { DEMO_MORE = new URLSearchParams(location.search).get("demo") === "more"; } catch (e) { }
+  var demoFlooded = false;
+  function floodDemo() {
+    print("DEMO: LONG TEXT PAGES UP WITH MORE, SO NOTHING SCROLLS AWAY UNREAD.", "good");
+    engine.say(engine.text(S.packs.core.intro, "core"), "sys");
+  }
   function boot() {
     var el = $("boot"), lines = [
       "", "    **** " + (GAME.machine || "STARWAYS 64") + " BASIC V2 ****", "", " 64K RAM SYSTEM  38911 BASIC BYTES FREE", "", "READY.",
@@ -2380,9 +2488,9 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     document.body.classList.remove("loading");
     (function step() {
       if (mode !== "boot") return;
-      if (i < lines.length) { el.textContent += lines[i++] + "\n"; return setTimeout(step, i > 6 ? 350 : 120); }
+      if (i < lines.length) { el.textContent += lines[i++] + "\n"; return setTimeout(step, DEMO_MORE ? 10 : (i > 6 ? 350 : 120)); }
       document.body.classList.add("loading");
-      setTimeout(title, 1600);
+      setTimeout(title, DEMO_MORE ? 0 : 1600);
     })();
   }
   function title() {
@@ -2405,6 +2513,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     print(GAME.help || "Type HELP at any time. TAB or I shows your inventory. MODS loads community lands.", "sys");
     print("V" + (GAME.version || S.VERSION) + "  -  (C) 2026 " + (GAME.credit || "FLUSHTHEFASHION"), "sys");
     cmd.focus();
+    if (DEMO_MORE && !demoFlooded) { demoFlooded = true; mode = "play"; engine.newGame(); floodDemo(); }
   }
 
   /* ---------- community packs ---------- */
