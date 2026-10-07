@@ -2193,7 +2193,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   morebar.className = "hidden";
   morebar.innerHTML = "<button id=\"more\" aria-label=\"Show more text\">MORE</button>";
   var mode = "boot", history = [], hpos = 0, queue = [], typing = null;
-  var pageTop = null, waitingMore = false;
+  var pageTop = null, waitingMore = false, noPage = false;
 
   /* ---------- typewriter output (paged: a full screen waits for MORE) ---------- */
   function print(text, cls) { queue.push({ t: text, c: cls }); if (!typing && !waitingMore) next(); }
@@ -2237,7 +2237,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     function park() { out.removeChild(d); queue.unshift(q); showMore(); return null; }
     if (!q.t) {
       d.textContent = " ";
-      if (!first && pageOverflows(lineHeightPx(), d)) return park();
+      if (!first && !noPage && pageOverflows(lineHeightPx(), d)) return park();
       return { blank: true };
     }
     d.textContent = q.t;
@@ -2246,7 +2246,7 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
       var parts = splitTall(q.t, vh, d);
       if (parts) { q.t = parts[0]; d.textContent = parts[0]; queue.unshift({ t: parts[1], c: q.c }); }
     }
-    if (!first && pageOverflows(d.offsetHeight, d)) return park();
+    if (!first && !noPage && pageOverflows(d.offsetHeight, d)) return park();
     return { d: d, q: q };
   }
   // Scroll the page top back to the top of the view: the sticky MORE bar can
@@ -2264,12 +2264,15 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     morebar.classList.remove("hidden");
     snapPage();
   }
-  function advanceMore() {
-    if (!waitingMore) return;
+  function dropMore() {
     waitingMore = false;
     morebar.classList.add("hidden");
     morebar.remove();
     pageTop = null;
+  }
+  function advanceMore() {
+    if (!waitingMore) return;
+    dropMore();
     next();
   }
   function next() {
@@ -2394,7 +2397,12 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
 
   function submit(v) {
     S.Sound.unlock();
-    if (waitingMore) return advanceMore();
+    if (waitingMore) {
+      if (!v.trim()) return advanceMore();   // a bare Enter still just pages on
+      dropMore();                            // a typed command jumps ahead: the
+      noPage = true; flush(); noPage = false;// queued text shows at once, then
+      pageTop = null;                        // the command runs on a fresh page
+    }
     flush();
     if (mode === "boot") return title();
     if (mode === "arrival") return continueArrival();
@@ -2445,7 +2453,19 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     if (overlayOpen()) { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); closeOverlays(); } return; }
     if (mode === "boot") { e.preventDefault(); return title(); }
     if (mode === "arrival") { e.preventDefault(); return continueArrival(); }
-    if (waitingMore) { if (!e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); advanceMore(); } return; }
+    if (waitingMore && e.key !== "Enter") {
+      // Enter falls through to the normal submit path below: a typed command
+      // jumps ahead and runs, an empty one just pages on (submit sorts the two).
+      if (cmd.value) return;                      // mid-command: keep editing
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key.length === 1 && e.key !== " ") {
+        // A first letter pages on once AND starts a command in the input.
+        e.preventDefault(); advanceMore(); cmd.focus();
+        cmd.value += e.key; sync(); S.Sound.play("key");
+        return;
+      }
+      e.preventDefault(); advanceMore(); return;  // a bare keypress pages on
+    }
     if (e.key === "Tab") { e.preventDefault(); return submit("i"); }
     if (document.activeElement !== cmd) cmd.focus();
     if (e.key === "Enter") { e.preventDefault(); var v = cmd.value; cmd.value = ""; sync(); submit(v); dismissKeyboard(); }
@@ -2479,6 +2499,18 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   function floodDemo() {
     print("DEMO: LONG TEXT PAGES UP WITH MORE, SO NOTHING SCROLLS AWAY UNREAD.", "good");
     engine.say(engine.text(S.packs.core.intro, "core"), "sys");
+    // ?say=<command>: once MORE is showing, run it through the real input
+    // path - a typed command jumps ahead and the game answers (regression
+    // check for "typing while MORE submits the command").
+    var demoCmd = null;
+    try { demoCmd = new URLSearchParams(location.search).get("say"); } catch (e) { }
+    if (demoCmd) {
+      var iv = setInterval(function () {
+        if (!waitingMore) return;
+        clearInterval(iv);
+        submit(demoCmd);
+      }, 50);
+    }
   }
   function boot() {
     var el = $("boot"), lines = [
