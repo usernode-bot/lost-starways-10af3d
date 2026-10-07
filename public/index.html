@@ -109,14 +109,15 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 }
 
 #keys { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-#keys button, .box button {
+#keys button, .box button, .more {
   font-family: var(--pixel); font-size: clamp(9px, 1.3vw, 11px); cursor: pointer;
   background: color-mix(in srgb, var(--key) 70%, var(--bg)); color: #e6e2d6; border: 0;
   border-bottom: 3px solid #1a1500; border-right: 3px solid #1a1500;
   padding: 8px 10px; min-width: 3em;
 }
-#keys button:active, .box button:active { transform: translate(1px, 1px); border-width: 0 2px 2px 0; }
-#keys button:focus-visible, .box button:focus-visible { outline: 2px solid var(--white); }
+#keys button:active, .box button:active, .more:active { transform: translate(1px, 1px); border-width: 0 2px 2px 0; }
+#keys button:focus-visible, .box button:focus-visible, .more:focus-visible { outline: 2px solid var(--white); }
+.more { display: block; width: fit-content; margin-top: 8px; }
 
 .overlay {
   position: absolute; inset: 0; z-index: 5;
@@ -146,7 +147,7 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
   background: #000; color: var(--green); border: 2px solid var(--fg); padding: 6px;
 }
 .row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-#modmsg { white-space: pre-wrap; font-family: "Courier New", monospace; font-size: 12px; color: var(--yellow); max-height: 10em; overflow-y: auto; text-transform: none; }
+#modmsg { white-space: pre-wrap; font-family: "Courier New", monospace; font-size: 12px; color: var(--yellow); text-transform: none; }
 #modlist li { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 #modlist button { font-size: .75em; padding: 3px 6px; }
 
@@ -1719,9 +1720,15 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   var out = $("out"), cmd = $("cmd"), typed = $("typed");
   var gfx = new S.Gfx($("pic"));
   var mode = "boot", history = [], hpos = 0, queue = [], typing = null;
+  var PAGE = 8, pageNum = 0, moreBtn = null;   // pagination: lines shown this page, the MORE... button
+  var modBtn = null, modFull = "", modShown = 0;   // the same paging for the MODS report
 
   /* ---------- typewriter output ---------- */
-  function print(text, cls) { queue.push({ t: text, c: cls }); if (!typing) next(); }
+  function print(text, cls) {
+    if (!typing && !moreBtn) pageNum = 0;   // a new block of text starts a fresh page
+    queue.push({ t: text, c: cls });
+    if (!typing) next();
+  }
   function line(q) {
     var d = document.createElement("div");
     d.className = "ln " + (q.c || "");
@@ -1730,8 +1737,11 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
     return d;
   }
   function next() {
+    if (moreBtn) return;   // paused on a page - the queue waits for MORE...
     if (!queue.length) { typing = null; return; }
+    if (pageNum >= PAGE) return holdPage();
     var q = queue.shift(), d = line(q);
+    pageNum++;
     if (!q.t) { d.textContent = " "; return next(); }
     typing = { d: d, t: q.t, i: 0 };
     var me = typing;
@@ -1743,12 +1753,31 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
       if (me.i >= me.t.length) next(); else requestAnimationFrame(tick);
     })();
   }
+  function holdPage() {
+    typing = null;
+    moreBtn = document.createElement("button");
+    moreBtn.className = "more";
+    moreBtn.textContent = "MORE...";
+    moreBtn.setAttribute("aria-label", "Show more");
+    moreBtn.onclick = function (e) { e.stopPropagation(); nextPage(); };
+    out.appendChild(moreBtn);
+    out.scrollTop = out.scrollHeight;
+  }
+  function nextPage() {
+    if (!moreBtn) return;
+    moreBtn.parentNode.removeChild(moreBtn);
+    moreBtn = null;
+    pageNum = 0;
+    next();
+  }
   function flush() {
+    if (moreBtn) { moreBtn.parentNode.removeChild(moreBtn); moreBtn = null; }
+    pageNum = 0;
     if (typing) { typing.d.textContent = typing.t; typing = null; }
     while (queue.length) { var q = queue.shift(); line(q).textContent = q.t || " "; }
     out.scrollTop = out.scrollHeight;
   }
-  function clear() { queue = []; typing = null; out.textContent = ""; }
+  function clear() { queue = []; typing = null; out.textContent = ""; pageNum = 0; moreBtn = null; }
 
   /* ---------- theme & effects ---------- */
   function theme(c) {
@@ -1849,8 +1878,12 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   cmd.addEventListener("input", function () { sync(); S.Sound.play("key"); });
   document.addEventListener("keydown", function (e) {
     if (e.target && e.target.id === "modtext") { if (e.key === "Escape") closeOverlays(); return; }
-    if (overlayOpen()) { if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); closeOverlays(); } return; }
+    if (overlayOpen()) {
+      if (modBtn && e.key === "Enter") { e.preventDefault(); modNextPage(); return; }   // page the MODS report
+      if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); closeOverlays(); } return;
+    }
     if (mode === "boot") { e.preventDefault(); return title(); }
+    if (moreBtn) { e.preventDefault(); if (e.key === "Enter") nextPage(); return; }   // wait for MORE...
     if (e.key === "Tab") { e.preventDefault(); return submit("i"); }
     if (document.activeElement !== cmd) cmd.focus();
     if (e.key === "Enter") { e.preventDefault(); var v = cmd.value; cmd.value = ""; sync(); submit(v); dismissKeyboard(); }
@@ -1866,6 +1899,7 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   Array.prototype.forEach.call(document.querySelectorAll("#keys button"), function (b) {
     b.addEventListener("click", function (e) {
       e.stopPropagation();
+      if (moreBtn) return;   // quick keys wait while a page is up
       if (b.getAttribute("data-cmd") === "hub") return goHub();
       if (mode !== "play") return submit("");
       submit(b.getAttribute("data-cmd"));
@@ -1924,17 +1958,35 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
     });
   }
   function parsePasted() {
-    var txt = $("modtext").value.trim(), msg = $("modmsg");
-    if (!txt) { msg.textContent = "Paste a pack first."; return null; }
-    if (txt.length > 300000) { msg.textContent = "That pack is too big (max 300KB)."; return null; }
+    var txt = $("modtext").value.trim();
+    if (!txt) { modMsg("Paste a pack first."); return null; }
+    if (txt.length > 300000) { modMsg("That pack is too big (max 300KB)."); return null; }
     try { return JSON.parse(txt); }
-    catch (e) { msg.textContent = "NOT VALID JSON:\n" + e.message + "\n\nTip: check for missing commas, trailing commas, or 'single' quotes."; return null; }
+    catch (e) { modMsg("NOT VALID JSON:\n" + e.message + "\n\nTip: check for missing commas, trailing commas, or 'single' quotes."); return null; }
   }
+  // The MODS report pages like the game text: first PAGE lines, then MORE...
+  function modMsg(t) { modFull = String(t); modPage(0); }
+  function modPage(from) {
+    modShown = from;
+    var msg = $("modmsg"), lines = modFull.split("\n"), end = Math.min(lines.length, from + PAGE);
+    if (modBtn) { modBtn.parentNode.removeChild(modBtn); modBtn = null; }
+    msg.textContent = lines.slice(0, end).join("\n");
+    if (end < lines.length) {
+      modBtn = document.createElement("button");
+      modBtn.className = "more";
+      modBtn.textContent = "MORE...";
+      modBtn.setAttribute("aria-label", "Show more");
+      modBtn.onclick = function (e) { e.stopPropagation(); modPage(end); };
+      msg.appendChild(document.createTextNode("\n"));
+      msg.appendChild(modBtn);
+    }
+  }
+  function modNextPage() { if (modBtn) modPage(modShown + PAGE); }
   function report(r) {
     var t = r.ok ? "OK! This pack is valid." : "PROBLEMS FOUND:";
     r.errors.forEach(function (e) { t += "\n  ERROR  " + e; });
     r.warnings.forEach(function (w) { t += "\n  warn   " + w; });
-    $("modmsg").textContent = t;
+    modMsg(t);
   }
   function renderModList() {
     var ul = $("modlist"), all = savedPacks(), ids = Object.keys(all);
@@ -1955,16 +2007,16 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
       li.appendChild(span); li.appendChild(play); li.appendChild(rm); ul.appendChild(li);
     });
   }
-  function openMods() { $("modmsg").textContent = ""; renderModList(); $("mods").classList.remove("hidden"); $("modtext").focus(); }
+  function openMods() { modMsg(""); renderModList(); $("mods").classList.remove("hidden"); $("modtext").focus(); }
   $("mod-validate").onclick = function () { var p = parsePasted(); if (p) report(S.validatePack(p)); };
   $("mod-install").onclick = function () {
     var p = parsePasted(); if (!p) return;
     var r = S.validatePack(p); report(r);
     if (!r.ok) return;
-    if (S.packs[p.id] && S.packs[p.id]._source === "builtin") { $("modmsg").textContent = "The id \"" + p.id + "\" is used by a built-in land. Pick another id."; return; }
+    if (S.packs[p.id] && S.packs[p.id]._source === "builtin") { modMsg("The id \"" + p.id + "\" is used by a built-in land. Pick another id."); return; }
     S.addPack(p, "community");
     var all = savedPacks(); all[p.id] = p; writePacks(all);
-    $("modmsg").textContent += "\n\nINSTALLED! " + (p.type === "side" ? "Look for the rift in " + p.hook.pack + " (" + p.hook.room + "), or press PLAY to test it now." : "It joins the Starways as land " + p.order + ". Press PLAY to test it now.");
+    modMsg(modFull + "\n\nINSTALLED! " + (p.type === "side" ? "Look for the rift in " + p.hook.pack + " (" + p.hook.room + "), or press PLAY to test it now." : "It joins the Starways as land " + p.order + ". Press PLAY to test it now."));
     $("modtext").value = "";
     renderModList();
   };
