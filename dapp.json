@@ -74,6 +74,28 @@
       "name": "Dracula sound toggle shows its state",
       "path": "/dracula",
       "expectText": "SND ON"
+    },
+    {
+      "id": "game.more-paging",
+      "name": "Long text pages up with a MORE prompt",
+      "path": "/play?demo=more",
+      "expectSelector": "#morebar:not(.hidden) #more",
+      "expectText": "MORE",
+      "visual": true,
+      "impact": [
+        "public/index.html"
+      ]
+    },
+    {
+      "id": "dracula.more-paging",
+      "name": "Dracula long text pages up with a MORE prompt",
+      "path": "/dracula?demo=more",
+      "expectSelector": "#morebar:not(.hidden) #more",
+      "expectText": "MORE",
+      "visual": true,
+      "impact": [
+        "public/dracula.html"
+      ]
     }
   ],
   "governance": {
