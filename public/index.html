@@ -1731,11 +1731,24 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   morebar.id = "morebar";
   morebar.className = "hidden";
   morebar.innerHTML = "<button id=\"more\" aria-label=\"Show more text\">MORE</button>";
+  out.appendChild(morebar);           // lives at the end of #out; show/hide only
   var mode = "boot", history = [], hpos = 0, queue = [], typing = null;
-  var pageTop = null, waitingMore = false, noPage = false;
+  var pageTop = null, pageUsed = 0, waitingMore = false, noPage = false;
 
   /* ---------- typewriter output (paged: a full screen waits for MORE) ---------- */
-  function print(text, cls) { queue.push({ t: text, c: cls }); if (!typing && !waitingMore) next(); }
+  // Each response pages independently: when the output is idle and a fresh
+  // print arrives, that response starts its own empty page, so a short answer
+  // (TAKEN., a candle lit) shows in full instead of inheriting the fullness
+  // of whatever was on screen before it. MORE appears only when the response
+  // itself is taller than the screen.
+  function print(text, cls) {
+    var fresh = !queue.length && !typing && !waitingMore;
+    queue.push({ t: text, c: cls });
+    if (!typing && !waitingMore) {
+      if (fresh) { pageTop = null; pageUsed = 0; }
+      next();
+    }
+  }
   function line(q) {
     var d = document.createElement("div");
     d.className = "ln " + (q.c || "");
@@ -1747,15 +1760,15 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
     var v = parseFloat(getComputedStyle(out).lineHeight);
     return isNaN(v) ? 24 : v;
   }
-  // Would adding a line of height h push the current page out of view?
-  function pageOverflows(h, probe) {
+  // Would a line of height h make the current page taller than the screen?
+  // Measured from the page's own accumulated height (pageUsed), not from the
+  // scroll position: a response that starts on a half-full screen can still
+  // fit in full, and one that starts at the bottom of a full screen still
+  // gets the whole viewport to itself.
+  function pageOverflows(h) {
     var vh = out.clientHeight;
-    if (!pageTop || vh <= 0) return false;
-    var pTop = pageTop.getBoundingClientRect().top;
-    if (pTop < out.getBoundingClientRect().top - 1) return true;   // page top already scrolled away
-    var last = probe ? probe.previousElementSibling : out.lastElementChild;
-    if (!last) return false;
-    return (last.getBoundingClientRect().bottom - pTop) + h > vh - 4;
+    if (vh <= 0) return false;
+    return pageUsed + h > vh - 4;
   }
   // Split a single line taller than the screen at a word boundary: [fits, rest]
   function splitTall(t, fit, probe) {
@@ -1776,7 +1789,9 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
     function park() { out.removeChild(d); queue.unshift(q); showMore(); return null; }
     if (!q.t) {
       d.textContent = " ";
-      if (!first && !noPage && pageOverflows(lineHeightPx(), d)) return park();
+      var bh = lineHeightPx();
+      if (!first && !noPage && pageOverflows(bh)) return park();
+      pageUsed += bh;
       return { blank: true };
     }
     d.textContent = q.t;
@@ -1785,7 +1800,8 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
       var parts = splitTall(q.t, vh, d);
       if (parts) { q.t = parts[0]; d.textContent = parts[0]; queue.unshift({ t: parts[1], c: q.c }); }
     }
-    if (!first && !noPage && pageOverflows(d.offsetHeight, d)) return park();
+    if (!first && !noPage && pageOverflows(d.offsetHeight)) return park();
+    pageUsed += d.offsetHeight;
     return { d: d, q: q };
   }
   // Scroll the page top back to the top of the view: the sticky MORE bar can
@@ -1799,15 +1815,14 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   function showMore() {
     waitingMore = true;
     typing = null;
-    out.appendChild(morebar);           // sticky at the end of the text
+    out.appendChild(morebar);           // move it to the end of the text
     morebar.classList.remove("hidden");
     snapPage();
   }
   function dropMore() {
     waitingMore = false;
     morebar.classList.add("hidden");
-    morebar.remove();
-    pageTop = null;
+    pageTop = null; pageUsed = 0;
   }
   function advanceMore() {
     if (!waitingMore) return;
@@ -1816,8 +1831,9 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   }
   function next() {
     if (waitingMore) return;
-    // Keep pageTop when the queue drains: a later print joins the current
-    // page, so a short line is never orphaned above the fold unread.
+    // The queue draining only ends the typing: lines printed later in this
+    // response still join the current page. A NEW response resets the page
+    // itself (see print).
     if (!queue.length) { typing = null; return; }
     var r = takeLine();
     if (!r) return;
@@ -1843,10 +1859,10 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
   }
   function clear() {
     queue = []; typing = null;
-    pageTop = null; waitingMore = false;
+    pageTop = null; pageUsed = 0; waitingMore = false;
     morebar.classList.add("hidden");
-    morebar.remove();
     out.textContent = "";
+    out.appendChild(morebar);           // it lives in #out
   }
 
   /* ---------- theme & effects ---------- */
@@ -1927,7 +1943,7 @@ Starways.addPack({"format":1,"id":"grimmoor","type":"main","order":1,"title":"Gr
       if (!v.trim()) return advanceMore();   // a bare Enter still just pages on
       dropMore();                            // a typed command jumps ahead: the
       noPage = true; flush(); noPage = false;// queued text shows at once, then
-      pageTop = null;                        // the command runs on a fresh page
+      pageTop = null; pageUsed = 0;          // the command runs on a fresh page
     }
     flush();
     if (mode === "boot") return title();

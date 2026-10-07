@@ -108,6 +108,28 @@
       "name": "Dracula: typing a command while MORE shows runs it",
       "path": "/dracula?demo=more&say=look",
       "expectText": "> LOOK"
+    },
+    {
+      "id": "game.short-answer-no-more",
+      "name": "A short answer shows in full with no MORE prompt",
+      "path": "/play?demo=more&say=x%20matches",
+      "expectSelector": "#morebar.hidden",
+      "expectText": "Plenty left.",
+      "visual": true,
+      "impact": [
+        "public/index.html"
+      ]
+    },
+    {
+      "id": "dracula.short-answer-no-more",
+      "name": "Dracula: a short answer shows in full with no MORE prompt",
+      "path": "/dracula?demo=more&say=examine%20candle",
+      "expectSelector": "#morebar.hidden",
+      "expectText": "You could LIGHT it.",
+      "visual": true,
+      "impact": [
+        "public/dracula.html"
+      ]
     }
   ],
   "governance": {
