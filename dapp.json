@@ -96,6 +96,18 @@
       "impact": [
         "public/dracula.html"
       ]
+    },
+    {
+      "id": "game.more-typed-command",
+      "name": "Typing a command while MORE shows runs it",
+      "path": "/play?demo=more&say=look",
+      "expectText": "> LOOK"
+    },
+    {
+      "id": "dracula.more-typed-command",
+      "name": "Dracula: typing a command while MORE shows runs it",
+      "path": "/dracula?demo=more&say=look",
+      "expectText": "> LOOK"
     }
   ],
   "governance": {
