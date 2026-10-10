@@ -1,5 +1,6 @@
 {
   "description": "Old skool adventure game",
+  "icon": { "image": "brand/icon.png" },
   "secrets": [],
   "tests": [
     {
@@ -108,6 +109,16 @@
       "name": "Dracula: typing a command while MORE shows runs it",
       "path": "/dracula?demo=more&say=look",
       "expectText": "> LOOK"
+    },
+    {
+      "name": "PWA manifest is served",
+      "path": "/manifest.webmanifest",
+      "expectText": "Lost Starways"
+    },
+    {
+      "name": "Hub links the PWA manifest and icon",
+      "path": "/",
+      "expectSelector": "link[rel='manifest'][href='/manifest.webmanifest']"
     }
   ],
   "governance": {
