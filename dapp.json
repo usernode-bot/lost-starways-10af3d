@@ -104,10 +104,22 @@
       "expectText": "> LOOK"
     },
     {
+      "id": "game.command-fresh-page",
+      "name": "A command on a full page shows its answer before MORE",
+      "path": "/play?demo=more&say=look,help",
+      "expectText": "MOVE: FORWARD"
+    },
+    {
       "id": "dracula.more-typed-command",
       "name": "Dracula: typing a command while MORE shows runs it",
       "path": "/dracula?demo=more&say=look",
       "expectText": "> LOOK"
+    },
+    {
+      "id": "dracula.command-fresh-page",
+      "name": "Dracula: a command on a full page shows its answer before MORE",
+      "path": "/dracula?demo=more&say=look,help",
+      "expectText": "MOVE: FORWARD"
     },
     {
       "id": "pwa.manifest",

@@ -2399,9 +2399,13 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     S.Sound.unlock();
     if (waitingMore) {
       if (!v.trim()) return advanceMore();   // a bare Enter still just pages on
-      dropMore();                            // a typed command jumps ahead: the
-      noPage = true; flush(); noPage = false;// queued text shows at once, then
-      pageTop = null;                        // the command runs on a fresh page
+    } else {
+      flush();                               // finish whatever is still typing out
+    }
+    if (waitingMore && v.trim()) {           // a typed command jumps ahead: the
+      dropMore();                            // queued text shows at once, then
+      noPage = true; flush(); noPage = false;// the command runs on a fresh page
+      pageTop = null;
     }
     flush();
     if (mode === "boot") return title();
@@ -2418,7 +2422,8 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
     }
     if (!v.trim()) return;
     history.push(v); hpos = history.length;
-    print("> " + v.toUpperCase(), "echo");
+    pageTop = null;                          // a command starts a fresh page: its
+    print("> " + v.toUpperCase(), "echo");   // first bunch shows before MORE can
     engine.command(v);
   }
 
@@ -2499,17 +2504,46 @@ Starways.addPack({"format":1,"id":"ice-house","type":"side","title":"The Ice Hou
   function floodDemo() {
     print("DEMO: LONG TEXT PAGES UP WITH MORE, SO NOTHING SCROLLS AWAY UNREAD.", "good");
     engine.say(engine.text(S.packs.core.intro, "core"), "sys");
-    // ?say=<command>: once MORE is showing, run it through the real input
-    // path - a typed command jumps ahead and the game answers (regression
-    // check for "typing while MORE submits the command").
-    var demoCmd = null;
-    try { demoCmd = new URLSearchParams(location.search).get("say"); } catch (e) { }
-    if (demoCmd) {
+    // ?say=<command>[,<command>...]: once MORE is showing, run the first
+    // through the real input path - a typed command jumps ahead and the game
+    // answers (regression check for "typing while MORE submits the command").
+    // Further commands run one at a time as the output settles, each facing a
+    // page topped up to just short of full, so a check can reach the "command
+    // on a full page" state that must still show the answer's first bunch.
+    var demoCmds = [];
+    try {
+      demoCmds = (new URLSearchParams(location.search).get("say") || "")
+        .split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    } catch (e) { }
+    if (demoCmds.length) {
+      var di = 0;
       var iv = setInterval(function () {
-        if (!waitingMore) return;
-        clearInterval(iv);
-        submit(demoCmd);
+        if (typing) return;                     // a line is still typing out
+        if (di >= demoCmds.length) { clearInterval(iv); return; }
+        if (di === 0) { if (!waitingMore) return; }   // first: wait for MORE
+        else if (!waitingMore) padPage();       // later: face a nearly-full page
+        submit(demoCmds[di++]);
       }, 50);
+    }
+  }
+  // Mirror of the paging check for the demo: would one more single line park?
+  function pageWouldOverflow() {
+    var vh = out.clientHeight;
+    if (!pageTop || vh <= 0) return false;
+    var pTop = pageTop.getBoundingClientRect().top;
+    if (pTop < out.getBoundingClientRect().top - 1) return true;
+    var last = out.lastElementChild;
+    if (!last) return false;
+    // conservative: a following line could wrap to two, so stop a line early
+    return (last.getBoundingClientRect().bottom - pTop) + lineHeightPx() * 2 > vh - 4;
+  }
+  // Demo helper: print filler until one more line would park, leaving the
+  // current page full but not yet showing MORE.
+  function padPage() {
+    var guard = 0;
+    while (!waitingMore && !pageWouldOverflow() && guard++ < 400) {
+      print("STAGING DEMO FILLER LINE " + guard + ".", "sys");
+      flush();
     }
   }
   function boot() {
