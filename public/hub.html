@@ -130,7 +130,6 @@ body {
     <section class="box" aria-label="Leaderboard">
       <div class="box-title">TOP SCOUTS</div>
       <div id="board"><div class="empty">LOADING...</div></div>
-      <div id="you" class="dim" hidden></div>
     </section>
 
     <div class="dim">Old-school games for a 1982 home computer. Finish a game to post your score.</div>
@@ -197,6 +196,12 @@ body {
   }
 
   /* ---------- leaderboard ---------- */
+  /* The server lists every scout who has posted a score (equal totals in
+     alphabetical order). Ten rows show by default; MORE reveals the rest. */
+  var BOARD_SHOW = 10;
+  var boardExpanded = false;
+  var lastBoard = null;
+
   function scoreCell(row, gameId) {
     var v = row.scores && row.scores[gameId];
     return typeof v === "number" ? v : 0;
@@ -224,12 +229,13 @@ body {
     return tr;
   }
   function renderBoard(d) {
-    var el = $("board"), you = $("you");
+    lastBoard = d;
+    var el = $("board");
     el.textContent = "";
-    you.hidden = true;
     if (d.viewer && d.viewer.username) $("st-user").textContent = up(d.viewer.username);
     var live = d.games || [];
-    if (!(d.rows || []).length) {
+    var rows = d.rows || [];
+    if (!rows.length) {
       var p = document.createElement("div");
       p.className = "empty";
       p.textContent = "NO SCOUTS YET. BE THE FIRST.";
@@ -257,12 +263,19 @@ body {
     thead.appendChild(trh);
     table.appendChild(thead);
     var tbody = document.createElement("tbody");
-    d.rows.forEach(function (row, i) { tbody.appendChild(boardRow(row, i, live, d.viewer && d.viewer.username)); });
+    var shown = boardExpanded ? rows : rows.slice(0, BOARD_SHOW);
+    shown.forEach(function (row, i) { tbody.appendChild(boardRow(row, i, live, d.viewer && d.viewer.username)); });
     table.appendChild(tbody);
     el.appendChild(table);
-    if (d.you) {
-      you.hidden = false;
-      you.textContent = "YOU: " + d.you.total + " PTS, RANK #" + d.you.rank;
+    if (rows.length > BOARD_SHOW) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = boardExpanded ? "LESS" : "MORE";
+      btn.addEventListener("click", function () {
+        boardExpanded = !boardExpanded;
+        if (lastBoard) renderBoard(lastBoard);
+      });
+      el.appendChild(btn);
     }
   }
 
