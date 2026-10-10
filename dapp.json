@@ -119,6 +119,12 @@
       "name": "Hub links the PWA manifest and icon",
       "path": "/",
       "expectSelector": "link[rel='manifest'][href='/manifest.webmanifest']"
+    },
+    {
+      "id": "pwa.manifest",
+      "name": "Web app manifest lists the home-screen icons",
+      "path": "/manifest.json",
+      "expectText": "icon-512.png"
     }
   ],
   "governance": {
