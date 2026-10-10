@@ -105,6 +105,30 @@
       "expectText": "> LOOK"
     },
     {
+      "id": "game.pod-locker-mask",
+      "name": "Pod locker turns up an oxygen mask",
+      "path": "/play?demo=suit&say=open locker",
+      "expectText": "OXYGEN MASK"
+    },
+    {
+      "id": "game.unmasked-exit-blocked",
+      "name": "Unmasked exit is turned back by the fog",
+      "path": "/play?demo=suit&say=forward",
+      "expectText": "NOT breathable"
+    },
+    {
+      "id": "game.wear-mask-seals",
+      "name": "Wearing the mask seals it on",
+      "path": "/play?demo=suit&got=1&say=wear mask",
+      "expectText": "SEAL CONFIRMED"
+    },
+    {
+      "id": "game.masked-exit-opens",
+      "name": "Masked exit leads out to the crater",
+      "path": "/play?demo=suit&on=1&say=forward",
+      "expectText": "CRASH CRATER"
+    },
+    {
       "id": "dracula.more-typed-command",
       "name": "Dracula: typing a command while MORE shows runs it",
       "path": "/dracula?demo=more&say=look",
