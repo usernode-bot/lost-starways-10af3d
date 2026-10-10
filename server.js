@@ -69,9 +69,11 @@ async function migrate() {
   )`);
 
   // Staging starts from a copy of production, so tables this change creates
-  // are EMPTY there and the leaderboard would render blank. Seed a handful of
+  // are EMPTY there and the leaderboard would render blank. Seed a roster of
   // obviously fake rows (never the visitor's identity, never real users) so
-  // the staging preview and the proposal checks have something to show.
+  // the staging preview and the proposal checks have something to show —
+  // more than ten scouts, several sharing a total, so the hub's ten-row cap,
+  // its MORE button and the alphabetical tie order all render.
   if (IS_STAGING) {
     const demo = [
       ['staging-demo-scout1', 'Staging demo scout 1', 620],
@@ -80,6 +82,13 @@ async function migrate() {
       ['staging-demo-scout4', 'Staging demo scout 4', 310],
       ['staging-demo-scout5', 'Staging demo scout 5', 215],
       ['staging-demo-scout6', 'Staging demo scout 6', 90],
+      ['staging-demo-scout7', 'Staging demo scout 7', 480],
+      ['staging-demo-scout8', 'Staging demo scout 8', 310],
+      ['staging-demo-scout9', 'Staging demo scout 9', 155],
+      ['staging-demo-scout10', 'Staging demo scout 10', 90],
+      ['staging-demo-scout11', 'Staging demo scout 11', 90],
+      ['staging-demo-scout12', 'Staging demo scout 12', 60],
+      ['staging-demo-scout13', 'Staging demo scout 13', 30],
     ];
     for (const [id, name, score] of demo) {
       await pool.query(
@@ -201,58 +210,27 @@ app.get('/dracula', (_req, res) => res.sendFile(path.join(__dirname, 'public', '
 
 // Shared leaderboard. Identity is req.user only (platform JWT); the client
 // never sends a name. Scores are the product here, so this table is public.
+//
+// No LIMIT: every scout who has posted a score is on the board the moment
+// they earn points, wherever they sit. Equal totals tie alphabetically (the
+// hub caps the DISPLAY at ten rows and offers a MORE button for the rest).
 app.get('/api/leaderboard', async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'No database' });
   try {
     const { rows } = await pool.query(
       `SELECT user_id, username,
               jsonb_object_agg(game_id, best_score) AS scores,
-              SUM(best_score)::int AS total,
-              MAX(best_score)::int AS best_single
+              SUM(best_score)::int AS total
        FROM game_scores
        WHERE game_id = ANY($1)
        GROUP BY user_id, username
-       ORDER BY total DESC, best_single DESC, username ASC
-       LIMIT 10`,
+       ORDER BY total DESC, username ASC`,
       [LIVE_GAME_IDS]
     );
-    let you = null;
-    if (req.user) {
-      const mine = await pool.query(
-        `SELECT user_id, username,
-                jsonb_object_agg(game_id, best_score) AS scores,
-                SUM(best_score)::int AS total
-         FROM game_scores
-         WHERE game_id = ANY($1) AND user_id = $2
-         GROUP BY user_id, username`,
-        [LIVE_GAME_IDS, req.user.id]
-      );
-      if (mine.rows.length) {
-        const rank = await pool.query(
-          `SELECT COUNT(*)::int AS ahead FROM (
-             SELECT user_id FROM game_scores
-             WHERE game_id = ANY($1)
-             GROUP BY user_id
-             HAVING SUM(best_score) > $2
-           ) t`,
-          [LIVE_GAME_IDS, mine.rows[0].total]
-        );
-        const top = new Set(rows.map((r) => r.user_id));
-        if (!top.has(req.user.id)) {
-          you = {
-            username: mine.rows[0].username,
-            scores: mine.rows[0].scores,
-            total: mine.rows[0].total,
-            rank: rank.rows[0].ahead + 1,
-          };
-        }
-      }
-    }
     res.json({
       viewer: req.user ? { username: req.user.username } : null,
       games: LIVE_GAMES.map((g) => ({ id: g.id, title: g.title })),
       rows: rows.map((r) => ({ username: r.username, scores: r.scores, total: r.total })),
-      you,
     });
   } catch (err) {
     console.warn('leaderboard query failed: ' + err.message);
