@@ -108,6 +108,12 @@
       "name": "Dracula: typing a command while MORE shows runs it",
       "path": "/dracula?demo=more&say=look",
       "expectText": "> LOOK"
+    },
+    {
+      "id": "pwa.manifest",
+      "name": "Web app manifest lists the home-screen icons",
+      "path": "/manifest.json",
+      "expectText": "icon-512.png"
     }
   ],
   "governance": {
