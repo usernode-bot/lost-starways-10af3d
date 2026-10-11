@@ -1,5 +1,6 @@
 {
   "description": "Old skool adventure game",
+  "icon": { "image": "brand/icon.png" },
   "secrets": [],
   "tests": [
     {
@@ -130,6 +131,22 @@
       "impact": [
         "public/dracula.html"
       ]
+    },
+    {
+      "name": "PWA manifest is served",
+      "path": "/manifest.webmanifest",
+      "expectText": "Lost Starways"
+    },
+    {
+      "name": "Hub links the PWA manifest and icon",
+      "path": "/",
+      "expectSelector": "link[rel='manifest'][href='/manifest.webmanifest']"
+    },
+    {
+      "id": "pwa.manifest",
+      "name": "Web app manifest lists the home-screen icons",
+      "path": "/manifest.json",
+      "expectText": "icon-512.png"
     }
   ],
   "governance": {
