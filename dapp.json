@@ -21,6 +21,12 @@
       ]
     },
     {
+      "id": "hub.board-more",
+      "name": "Board caps the view at ten scouts and offers MORE",
+      "path": "/",
+      "expectText": "MORE"
+    },
+    {
       "id": "game.title-screen",
       "name": "Lost Starways game screen loads",
       "path": "/play",
