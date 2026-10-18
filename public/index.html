@@ -97,7 +97,7 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 @keyframes glow { 50% { background: #f1eee4; } }
 
 #cmdline {
-  position: relative; display: flex; align-items: center; min-height: 2em;
+  position: relative; display: flex; align-items: center; min-height: 2em; flex: none;
   color: #fbf8ef; cursor: text; margin-top: 4px;
 }
 .prompt { margin-right: .5em; color: var(--soft-cyan); }
@@ -170,12 +170,12 @@ body.flash-part { animation: rainbow .12s steps(1) 5; }
 
     <canvas id="pic" aria-label="Picture of the current location"></canvas>
 
-    <div id="out" role="log" aria-live="polite"></div>
-
     <label id="cmdline" for="cmd">
       <span class="prompt">&gt;</span><span id="typed"></span><span id="cursor">&#9608;</span>
       <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Type a command">
     </label>
+
+    <div id="out" role="log" aria-live="polite"></div>
 
     <nav id="keys" aria-label="Quick commands">
       <button data-cmd="forward">F</button><button data-cmd="back">B</button>
